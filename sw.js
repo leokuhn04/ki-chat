@@ -1,7 +1,7 @@
 // Service Worker: App-Hülle zwischenspeichern, damit die App auch offline startet.
 // Strategie: erst Netz (damit Updates ankommen), sonst Cache.
-const CACHE = 'kichat-v2';
-const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
+const CACHE = 'kichat-v3';
+const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-180-v3.png', './icon-192-v3.png', './icon-512-v3.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

@@ -11,4 +11,4 @@ Kleine Web-App fürs iPhone: ein persönlicher KI-Chat, der direkt mit der Anthr
 - `index.html` – die komplette App (Oberfläche, Logik, Design)
 - `manifest.webmanifest` – Name, Icon und Vollbild-Modus für den Homescreen
 - `sw.js` – sorgt dafür, dass die App auch offline startet
-- `icon.svg` / `icon-*.png` – App-Icon
+- `icon.svg` / `icon-*-v3.png` – App-Icon
