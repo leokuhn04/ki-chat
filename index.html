@@ -437,7 +437,8 @@ function renderList(){
   if(!sorted.length){ list.innerHTML = '<div class="empty">Noch keine Chats.<br>Tippe oben rechts auf <b>+</b>, um den ersten anzulegen.</div>'; return; }
   for(const c of sorted){
     const last = c.messages[c.messages.length-1];
-    const prev = last ? (last.role==='user' ? 'Du: ' : '') + last.content.replace(/\s+/g,' ').slice(0,140) : 'Noch keine Nachrichten';
+    const plain = s => s.replace(/```[\s\S]*?```/g,' ').replace(/[*_`#>]+/g,'').replace(/\s+/g,' ').trim();
+    const prev = last ? (last.role==='user' ? 'Du: ' : '') + plain(last.content).slice(0,140) : 'Noch keine Nachrichten';
     const tags = [];
     if(c.instruction && c.instruction.trim()) tags.push('<span class="tag">Anweisung</span>');
     if(c.doc) tags.push('<span class="tag">'+DOC_ICON+esc(c.doc.name)+'</span>');
@@ -508,7 +509,7 @@ function setSendState(){
   btn.disabled = busy ? false : !ta.value.trim();
   btn.setAttribute('aria-label', busy ? 'Stopp' : 'Senden');
 }
-function autosize(ta){ ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 150)+'px'; }
+function autosize(ta){ if(!ta.value){ ta.style.height = ''; return; } ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 150)+'px'; }
 
 async function send(){
   const ta = $('#input'); const text = ta.value.trim();
@@ -637,7 +638,11 @@ function syncSettingsUI(){
 /* ---------- Tastatur / Viewport (iOS) ---------- */
 function fitApp(){
   const vv = window.visualViewport; if(!vv) return;
-  const app = $('#app'); app.style.height = vv.height+'px'; app.style.top = vv.offsetTop+'px';
+  // Nur eingreifen, wenn der sichtbare Bereich deutlich kleiner ist als das Fenster (Tastatur offen).
+  const keyboard = (window.innerHeight - vv.height) > 60;
+  const app = $('#app');
+  app.style.height = keyboard ? vv.height+'px' : '';
+  app.style.top = keyboard ? vv.offsetTop+'px' : '';
   window.scrollTo(0,0); if(current) scrollBottom();
 }
 
