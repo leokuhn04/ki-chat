@@ -637,14 +637,17 @@ function syncSettingsUI(){
 
 /* ---------- Tastatur / Viewport (iOS) ---------- */
 function fitApp(){
-  const vv = window.visualViewport; if(!vv) return;
-  // Nur eingreifen, wenn der sichtbare Bereich deutlich kleiner ist als das Fenster (Tastatur offen).
-  const keyboard = (window.innerHeight - vv.height) > 60;
+  // Die App immer exakt auf den sichtbaren Bereich legen. iOS verkleinert und verschiebt ihn,
+  // wenn die Tastatur aufgeht; ohne diese Anpassung liegt das Eingabefeld hinter der Tastatur.
+  const vv = window.visualViewport; if(!vv || !vv.height) return;
   const app = $('#app');
-  app.style.height = keyboard ? vv.height+'px' : '';
-  app.style.top = keyboard ? vv.offsetTop+'px' : '';
-  window.scrollTo(0,0); if(current) scrollBottom();
+  app.style.height = Math.round(vv.height)+'px';
+  app.style.transform = 'translateY('+Math.round(vv.offsetTop)+'px)';
+  if(window.scrollY) window.scrollTo(0,0);
+  if(current) scrollBottom();
 }
+// Tastatur-Animationen melden sich nicht immer zuverlässig: nach Fokuswechseln mehrfach nachziehen.
+function fitSoon(){ [50, 200, 450, 800].forEach(ms => setTimeout(fitApp, ms)); }
 
 /* ---------- Verdrahtung ---------- */
 function bindUI(){
@@ -660,7 +663,8 @@ function bindUI(){
   const ta = $('#input');
   ta.oninput = () => { autosize(ta); setSendState(); };
   ta.onkeydown = e => { if(e.key==='Enter' && !e.shiftKey && !matchMedia('(pointer: coarse)').matches){ e.preventDefault(); send(); } };
-  ta.onfocus = () => setTimeout(()=>scrollBottom(), 300);
+  ta.onfocus = () => { fitSoon(); setTimeout(()=>scrollBottom(), 300); };
+  ta.onblur = fitSoon;
 
   for(const id of ['#cs-name','#cs-instr','#cs-doc']) $(id).oninput = saveChatSettingsSoon;
   $('#btn-load-instr').onclick = () => $('#file-instr').click();
@@ -676,6 +680,8 @@ function bindUI(){
   document.addEventListener('visibilitychange', () => { if(document.visibilityState==='visible'){ renderList(); if(current && !streaming) renderMessages(); } });
 
   if(window.visualViewport){ visualViewport.addEventListener('resize', fitApp); visualViewport.addEventListener('scroll', fitApp); }
+  window.addEventListener('resize', fitApp);
+  window.addEventListener('orientationchange', fitSoon);
 }
 
 (async function main(){
