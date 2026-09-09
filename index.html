@@ -240,9 +240,9 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
       <p class="group-caption">Wird nur auf diesem Gerät gespeichert und ausschließlich an die Anthropic-API gesendet.</p>
       <div class="group">
         <div class="field"><label class="lbl" for="s-model">Modell</label><select id="s-model"></select><div class="muted" id="s-model-hint" style="margin-top:6px;font-size:13px"></div></div>
-        <div class="field"><span class="lbl">Denkaufwand</span><div class="seg" id="s-effort"><button data-v="low">Niedrig</button><button data-v="medium">Mittel</button><button data-v="high">Hoch</button></div></div>
+        <div class="field"><span class="lbl">Nachdenken vor der Antwort</span><div class="seg" id="s-effort"><button data-v="off">Aus</button><button data-v="low">Wenig</button><button data-v="medium">Mittel</button><button data-v="high">Viel</button></div></div>
       </div>
-      <p class="group-caption">Mehr Denkaufwand: gründlichere Antworten, aber langsamer und teurer. Mittel reicht für die meisten Gespräche.</p>
+      <p class="group-caption">Aus: antwortet direkt, ohne Denkphase. Das kann Anweisungen zu Rolle, Sprache und Stil unmittelbarer wirken lassen; Anthropic empfiehlt es nicht generell. Wenig bis Viel: das Modell überlegt vorher, je nach Stufe kürzer oder länger.</p>
       <div class="group">
         <div class="field"><label class="lbl" for="s-budget">Guthaben laut Anthropic-Konsole (US-Dollar)</label><input type="text" id="s-budget" inputmode="decimal" placeholder="z. B. 20" autocomplete="off"></div>
         <div class="field"><span class="lbl">Stand</span><div id="s-spent" style="font-size:17px"></div><div class="muted" id="s-spent-sub" style="font-size:13px;margin-top:4px"></div><div class="meter" id="s-meter" hidden><i></i></div></div>
@@ -397,7 +397,9 @@ function renderMarkdown(src){
 /* ---------- API ---------- */
 function buildRequest(chat){
   const m = MODELS.find(x=>x.id===settings.model) || MODELS[0];
-  const system = [{type:'text', text: TIME_NOTE}];
+  const thinkingOff = m.effort && settings.effort === 'off';
+  // Ohne Denkphase empfiehlt Anthropic diesen Zusatz, damit keine internen Markierungen in die Antwort rutschen.
+  const system = [{type:'text', text: TIME_NOTE + (thinkingOff ? ' Gib keine internen oder System-XML-Tags in deiner Antwort aus.' : '')}];
   if(chat.instruction && chat.instruction.trim()) system.push({type:'text', text: chat.instruction.trim()});
   if(chat.doc && chat.doc.text){
     system.push({type:'text', text: 'Das folgende Kontextdokument („'+chat.doc.name+'“) steht dir in diesem Chat dauerhaft zur Verfügung. Beziehe dich darauf, wenn es für die Frage relevant ist.\n\n<dokument name="'+chat.doc.name.replace(/"/g,'')+'">\n'+chat.doc.text+'\n</dokument>'});
@@ -419,7 +421,11 @@ function buildRequest(chat){
 
   // Optionale Extras: Denkaufwand und serverseitiger Fallback bei Ablehnungen.
   const body = {...base}; const extHeaders = {...headers}; let hasExtras = false;
-  if(m.effort){ body.output_config = {effort: settings.effort}; hasExtras = true; }
+  if(m.effort){
+    if(thinkingOff){ body.thinking = {type:'disabled'}; body.output_config = {effort:'medium'}; }
+    else body.output_config = {effort: settings.effort};
+    hasExtras = true;
+  }
   if(m.fallbacks){ body.fallbacks = 'default'; extHeaders['anthropic-beta'] = 'server-side-fallback-2026-07-01'; hasExtras = true; }
   return {body, headers:extHeaders, plainBody:base, plainHeaders:headers, hasExtras};
 }
