@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content">
+<title>KI-Chat</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KI-Chat">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<link rel="icon" href="./icon-192.png" type="image/png">
+<script>
+// Theme vor dem ersten Zeichnen setzen, damit nichts aufblitzt.
+(function(){try{var s=JSON.parse(localStorage.getItem('kichat.settings')||'{}');var t=s.theme||'system';if(t==='system')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;document.documentElement.dataset.accent=s.accent||'blue';}catch(e){}})();
+</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f2f2f7;--bg-elev:#fff;--bg-bubble:#e9e9eb;--bg-input:#fff;--bg-seg:#e3e3e8;--bg-seg-on:#fff;
+  --text:#111;--text-2:#6e6e73;--text-3:#aeaeb2;--sep:rgba(60,60,67,.16);
+  --accent:#0a84ff;--on-accent:#fff;--danger:#ff3b30;
+  --header-bg:rgba(242,242,247,.88);--code-bg:rgba(0,0,0,.06);
+  --sat:env(safe-area-inset-top);--sab:env(safe-area-inset-bottom);
+}
+[data-theme=dark]{
+  --bg:#000;--bg-elev:#1c1c1e;--bg-bubble:#262629;--bg-input:#1c1c1e;--bg-seg:#2c2c2e;--bg-seg-on:#48484a;
+  --text:#f2f2f7;--text-2:#98989f;--text-3:#636366;--sep:rgba(84,84,88,.45);
+  --header-bg:rgba(0,0,0,.82);--code-bg:rgba(255,255,255,.08);
+}
+[data-accent=green]{--accent:#2fb457}
+[data-accent=purple]{--accent:#8b5cf6}
+[data-accent=orange]{--accent:#ff7a1a}
+[data-accent=rose]{--accent:#ec4b78}
+[data-accent=graphite]{--accent:#5b5b66}
+[data-theme=dark][data-accent=graphite]{--accent:#9a9aa6;--on-accent:#111}
+
+html,body{height:100%;width:100%;overflow:hidden;position:fixed;overscroll-behavior:none}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,sans-serif;font-size:17px;line-height:1.35;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+button{font:inherit;background:none;border:0;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+.muted{color:var(--text-2);font-size:15px}
+
+#app{position:absolute;top:0;left:0;width:100%;height:100%;overflow:hidden;background:var(--bg)}
+.view{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);transform:translateX(100%);transition:transform .32s cubic-bezier(.32,.72,0,1);will-change:transform}
+.view.open{transform:none}
+#view-list{transform:none}
+.view.sheet{transform:translateY(100%)}
+.view.sheet.open{transform:none}
+.view.notrans{transition:none}
+
+/* Kopfzeile */
+header.bar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:calc(var(--sat) + 6px) 12px 6px;min-height:calc(var(--sat) + 50px);background:var(--header-bg);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:.5px solid var(--sep);z-index:2}
+.bar>button{color:var(--accent);min-width:64px;text-align:left;padding:6px 0;font-size:17px;display:flex;align-items:center;gap:2px}
+.bar>button.right{justify-content:flex-end;text-align:right}
+.bar>button.icon{font-size:26px;line-height:1}
+.bar .title{flex:1;min-width:0;text-align:center;color:var(--text);font-weight:600;font-size:17px;padding:4px 0;display:block}
+.bar .title .t{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar .title .sub{display:block;font-weight:400;font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.bar .title .sub:empty{display:none}
+.bar .spacer{min-width:64px}
+.scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.big-title{font-size:34px;font-weight:700;letter-spacing:-.4px;padding:6px 20px 8px}
+
+/* Chatliste */
+.list{padding:0 16px calc(var(--sab) + 24px)}
+.row{display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg-elev);border-radius:14px;margin-bottom:8px;width:100%;text-align:left}
+.row:active{opacity:.65}
+.avatar{flex:none;width:44px;height:44px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:19px}
+.row .meta{flex:1;min-width:0}
+.row .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .prev{font-size:15px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.row .tags{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.tag{font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)}
+.chev{color:var(--text-3);font-size:22px;padding-right:2px}
+.empty{text-align:center;color:var(--text-2);padding:70px 32px;font-size:16px;line-height:1.5}
+.empty b{color:var(--accent);font-size:20px}
+
+/* Nachrichten */
+.messages{flex:1;overflow-y:auto;padding:12px 12px 6px;display:flex;flex-direction:column;gap:8px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.msg{max-width:84%;padding:9px 13px;border-radius:18px;font-size:17px;line-height:1.38;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.msg.user{align-self:flex-end;background:var(--accent);color:var(--on-accent);border-bottom-right-radius:5px;white-space:pre-wrap}
+.msg.assistant{align-self:flex-start;background:var(--bg-bubble);color:var(--text);border-bottom-left-radius:5px;max-width:90%}
+.msg.assistant :is(p,ul,ol,pre,blockquote,h3,h4,h5,h6,hr)+*{margin-top:.6em}
+.msg.assistant ul,.msg.assistant ol{padding-left:1.35em}
+.msg.assistant li+li{margin-top:.2em}
+.msg.assistant :is(h3,h4,h5,h6){font-size:1em;font-weight:700}
+.msg.assistant h3{font-size:1.08em}
+.msg.assistant pre{background:var(--code-bg);border-radius:9px;padding:9px 11px;overflow-x:auto;font-size:13.5px;line-height:1.45;white-space:pre}
+.msg code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
+.msg.assistant :not(pre)>code{background:var(--code-bg);padding:1px 5px;border-radius:5px}
+.msg.assistant blockquote{border-left:3px solid var(--text-3);padding-left:10px;color:var(--text-2)}
+.msg.assistant a{color:var(--accent)}
+.msg.assistant hr{border:0;border-top:.5px solid var(--sep)}
+.msg.assistant.pending{color:var(--text-2);font-size:15px}
+.dots span{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--text-3);margin-right:4px;animation:blink 1.3s infinite}
+.dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+.err{align-self:center;text-align:center;max-width:100%;font-size:14px;color:var(--danger);padding:4px 16px;line-height:1.5}
+.err button{color:var(--accent);font-weight:600;display:block;margin:4px auto 0;font-size:15px}
+.hint{align-self:center;text-align:center;color:var(--text-2);font-size:15px;padding:40px 24px;max-width:100%;line-height:1.55}
+.hint b{color:var(--text)}
+
+/* Eingabe */
+.composer{flex:none;display:flex;align-items:flex-end;gap:8px;padding:8px 12px calc(var(--sab) + 8px);background:var(--header-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:.5px solid var(--sep)}
+.composer textarea{flex:1;resize:none;font:inherit;font-size:17px;line-height:1.3;padding:9px 14px;border-radius:20px;border:.5px solid var(--sep);background:var(--bg-input);color:var(--text);max-height:150px;outline:none;-webkit-appearance:none;appearance:none}
+.composer .send{flex:none;width:36px;height:36px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;margin-bottom:1px;transition:opacity .15s}
+.composer .send:disabled{opacity:.35}
+
+/* Formulare */
+.form{padding:12px 16px calc(var(--sab) + 32px)}
+.group{background:var(--bg-elev);border-radius:14px;margin-bottom:22px;overflow:hidden}
+.group .field{padding:12px 14px;border-bottom:.5px solid var(--sep)}
+.group>:last-child{border-bottom:0}
+.group .btn{border-bottom:.5px solid var(--sep)}
+.lbl{display:block;font-size:13px;color:var(--text-2);margin-bottom:6px;font-weight:500}
+.field input[type=text],.field input[type=password],.field textarea,.field select{width:100%;font:inherit;font-size:17px;color:var(--text);background:transparent;border:0;outline:none;-webkit-appearance:none;appearance:none;border-radius:0}
+.field textarea{min-height:110px;resize:vertical;line-height:1.4}
+.field select{padding-right:24px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238e8e93' stroke-width='1.8'/%3E%3C/svg%3E") no-repeat right center}
+.group-caption{font-size:13px;color:var(--text-2);padding:0 14px;margin:-14px 0 22px;line-height:1.45}
+.btn{display:block;width:100%;padding:12px 14px;text-align:left;font-size:17px;color:var(--accent)}
+.btn:active{background:var(--bg-seg)}
+.btn.danger{color:var(--danger)}
+.seg{display:flex;background:var(--bg-seg);border-radius:9px;padding:2px}
+.seg button{flex:1;padding:6px;border-radius:7px;font-size:14px;font-weight:500;color:var(--text)}
+.seg button.on{background:var(--bg-seg-on);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.swatches{display:flex;gap:12px;padding:4px 0}
+.swatch{width:34px;height:34px;border-radius:50%;border:3px solid transparent;transition:transform .15s}
+.swatch.on{border-color:var(--text);box-shadow:inset 0 0 0 2px var(--bg-elev);transform:scale(1.08)}
+.file-row{display:flex;align-items:center;gap:10px}
+.file-row .fname{flex:1;min-width:0;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-row .fsize{font-size:13px;color:var(--text-2);flex:none}
+.file-row .small{color:var(--accent);font-size:15px;flex:none}
+.file-row input{flex:1;min-width:0}
+
+#toast{position:absolute;left:50%;bottom:calc(var(--sab) + 84px);transform:translateX(-50%);background:rgba(30,30,32,.94);color:#fff;font-size:14px;padding:10px 16px;border-radius:12px;max-width:86%;text-align:center;z-index:10;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Chatliste -->
+  <section class="view" id="view-list">
+    <header class="bar">
+      <button id="btn-settings" aria-label="Einstellungen"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+      <div class="title"></div>
+      <button class="right icon" id="btn-new" aria-label="Neuer Chat">+</button>
+    </header>
+    <div class="scroll">
+      <h1 class="big-title">Chats</h1>
+      <div class="list" id="chat-list"></div>
+    </div>
+  </section>
+
+  <!-- Chat -->
+  <section class="view" id="view-chat">
+    <header class="bar">
+      <button id="btn-back"><span style="font-size:26px;line-height:.8;margin-right:2px">‹</span>Chats</button>
+      <button class="title" id="chat-title"><span class="t"></span><span class="sub"></span></button>
+      <button class="right icon" id="btn-chat-settings" aria-label="Chat-Einstellungen">⋯</button>
+    </header>
+    <div class="messages" id="messages"></div>
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="Nachricht" autocomplete="off"></textarea>
+      <button class="send" id="btn-send" aria-label="Senden" disabled></button>
+    </div>
+  </section>
+
+  <!-- Chat-Einstellungen -->
+  <section class="view" id="view-chat-settings">
+    <header class="bar">
+      <button id="btn-cs-back">Zurück</button>
+      <div class="title"><span class="t" id="cs-title">Chat</span></div>
+      <button class="right" id="btn-cs-done"><b>Fertig</b></button>
+    </header>
+    <div class="scroll form">
+      <div class="group">
+        <div class="field"><label class="lbl" for="cs-name">Name</label><input type="text" id="cs-name" placeholder="z. B. Schreibcoach" autocomplete="off"></div>
+      </div>
+      <div class="group">
+        <div class="field"><label class="lbl" for="cs-instr">Charakter &amp; Verhalten</label><textarea id="cs-instr" placeholder="Wie soll sich die KI in diesem Chat verhalten? Rolle, Ton, Regeln …"></textarea></div>
+        <button class="btn" id="btn-load-instr">Aus .md-Datei laden …</button>
+      </div>
+      <p class="group-caption">Wird bei jeder Nachricht als feste Anweisung mitgeschickt.</p>
+      <div class="group">
+        <div class="field">
+          <span class="lbl">Kontextdokument</span>
+          <div id="doc-empty" class="muted">Kein Dokument geladen.</div>
+          <div id="doc-info" class="file-row" hidden><span class="fname"></span><span class="fsize"></span></div>
+        </div>
+        <button class="btn" id="btn-load-doc">Dokument wählen (.md) …</button>
+        <button class="btn" id="btn-doc-toggle" hidden>Inhalt anzeigen / bearbeiten</button>
+        <div class="field" id="doc-edit" hidden><textarea id="cs-doc"></textarea></div>
+        <button class="btn danger" id="btn-doc-remove" hidden>Dokument entfernen</button>
+      </div>
+      <p class="group-caption">Steht der KI in diesem Chat dauerhaft zur Verfügung, ohne dass du es erneut schicken musst.</p>
+      <div class="group" id="cs-danger">
+        <button class="btn danger" id="btn-clear">Verlauf löschen</button>
+        <button class="btn danger" id="btn-delete">Chat löschen</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Einstellungen -->
+  <section class="view sheet" id="view-settings">
+    <header class="bar">
+      <div class="spacer"></div>
+      <div class="title"><span class="t">Einstellungen</span></div>
+      <button class="right" id="btn-settings-done"><b>Fertig</b></button>
+    </header>
+    <div class="scroll form">
+      <div class="group">
+        <div class="field"><label class="lbl" for="s-key">Anthropic API-Key</label>
+          <div class="file-row"><input type="password" id="s-key" placeholder="sk-ant-…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"><button id="btn-key-toggle" class="small">Anzeigen</button></div>
+        </div>
+      </div>
+      <p class="group-caption">Wird nur auf diesem Gerät gespeichert und ausschließlich an die Anthropic-API gesendet.</p>
+      <div class="group">
+        <div class="field"><label class="lbl" for="s-model">Modell</label><select id="s-model"></select><div class="muted" id="s-model-hint" style="margin-top:6px;font-size:13px"></div></div>
+        <div class="field"><span class="lbl">Denkaufwand</span><div class="seg" id="s-effort"><button data-v="low">Niedrig</button><button data-v="medium">Mittel</button><button data-v="high">Hoch</button></div></div>
+      </div>
+      <p class="group-caption">Mehr Denkaufwand: gründlichere Antworten, aber langsamer und teurer. Mittel reicht für die meisten Gespräche.</p>
+      <div class="group">
+        <div class="field"><span class="lbl">Erscheinungsbild</span><div class="seg" id="s-theme"><button data-v="system">Automatisch</button><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></div></div>
+        <div class="field"><span class="lbl">Akzentfarbe</span><div class="swatches" id="s-accent"></div></div>
+      </div>
+      <p class="group-caption">Alle Chats, Dokumente und der API-Key liegen ausschließlich auf diesem Gerät. Es gibt keinen Server dazwischen.</p>
+    </div>
+  </section>
+
+  <div id="toast" hidden></div>
+</div>
+<input type="file" id="file-instr" accept=".md,.txt,.markdown,text/markdown,text/plain" hidden>
+<input type="file" id="file-doc" accept=".md,.txt,.markdown,text/markdown,text/plain" hidden>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const API = 'https://api.anthropic.com/v1/messages';
+const ACCENTS = {blue:'#0a84ff', green:'#2fb457', purple:'#8b5cf6', orange:'#ff7a1a', rose:'#ec4b78', graphite:'#5b5b66'};
+const MODELS = [
+  {id:'claude-opus-5',   label:'Claude Opus 5',    hint:'Stärkstes Modell. Standard.',            effort:true,  fallbacks:true},
+  {id:'claude-sonnet-5', label:'Claude Sonnet 5',  hint:'Schnell und deutlich günstiger.',        effort:true,  fallbacks:false},
+  {id:'claude-haiku-4-5',label:'Claude Haiku 4.5', hint:'Sehr schnell, am günstigsten.',          effort:false, fallbacks:false},
+];
+const DEFAULTS = {apiKey:'', model:'claude-opus-5', effort:'medium', theme:'system', accent:'blue'};
+const SEND_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+const STOP_ICON = '<svg viewBox="0 0 24 24" width="16" height="16"><rect x="5" y="5" width="14" height="14" rx="3" fill="currentColor"/></svg>';
+
+let settings = loadSettings();
+let chats = [];
+let current = null;      // aktuell geöffneter Chat
+let streaming = null;    // {controller, chatId} während eine Antwort läuft
+let csIsNew = false;     // Chat-Einstellungen für einen frisch angelegten Chat?
+let stick = true;        // Nachrichtenliste klebt am unteren Ende
+
+/* ---------- Speicher ---------- */
+function loadSettings(){ try{ return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('kichat.settings')||'{}')); }catch(e){ return {...DEFAULTS}; } }
+function saveSettings(){ localStorage.setItem('kichat.settings', JSON.stringify(settings)); applyTheme(); }
+function applyTheme(){
+  let t = settings.theme;
+  if(t==='system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.dataset.theme = t;
+  document.documentElement.dataset.accent = settings.accent;
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+
+const DB = {
+  db:null,
+  open(){ return new Promise((res,rej)=>{ const r = indexedDB.open('kichat',1);
+    r.onupgradeneeded = e => { const db = e.target.result; if(!db.objectStoreNames.contains('chats')) db.createObjectStore('chats',{keyPath:'id'}); };
+    r.onsuccess = e => { DB.db = e.target.result; res(); }; r.onerror = () => rej(r.error); }); },
+  store(mode){ return DB.db.transaction('chats', mode).objectStore('chats'); },
+  all(){ return wrap(DB.store('readonly').getAll()); },
+  put(c){ return wrap(DB.store('readwrite').put(c)); },
+  del(id){ return wrap(DB.store('readwrite').delete(id)); },
+};
+function wrap(r){ return new Promise((res,rej)=>{ r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+
+/* ---------- Hilfen ---------- */
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2));
+const initial = n => (n||'?').trim().charAt(0).toUpperCase() || '?';
+const fmtSize = b => b < 1024 ? b+' B' : b < 1048576 ? (b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(2)+' MB';
+const byteLen = s => new Blob([s]).size;
+function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+function touch(c){ c.updatedAt = Date.now(); }
+let toastT; function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>{ t.hidden=true; }, 3200); }
+
+function open(id){ $('#'+id).classList.add('open'); }
+function close(id){ $('#'+id).classList.remove('open'); }
+function openInstant(id){ const el=$('#'+id); el.classList.add('notrans'); el.classList.add('open'); void el.offsetWidth; el.classList.remove('notrans'); }
+
+/* ---------- Markdown (klein, aber sicher: Text wird zuerst escaped) ---------- */
+function renderMarkdown(src){
+  const blocks = [];
+  src = src.replace(/```[^\n]*\n([\s\S]*?)```/g, (m, code) => { blocks.push('<pre><code>'+esc(code.replace(/\n$/,''))+'</code></pre>'); return ' '+(blocks.length-1)+' '; });
+  src = src.replace(/```[^\n]*\n([\s\S]*)$/, (m, code) => { blocks.push('<pre><code>'+esc(code)+'</code></pre>'); return ' '+(blocks.length-1)+' '; });
+  const inline = s => esc(s)
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
+    .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, '$1<em>$2</em>')
+    .replace(/(^|[^_\w])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  let html = '', para = [], list = null;
+  const flushPara = () => { if(para.length){ html += '<p>'+inline(para.join('\n')).replace(/\n/g,'<br>')+'</p>'; para = []; } };
+  const flushList = () => { if(list){ html += '<'+list.type+'>'+list.items.map(i=>'<li>'+inline(i)+'</li>').join('')+'</'+list.type+'>'; list = null; } };
+  for(const raw of src.split('\n')){
+    const line = raw.replace(/\s+$/,'');
+    let m;
+    if((m = line.match(/^ (\d+) $/))){ flushPara(); flushList(); html += blocks[+m[1]]; continue; }
+    if(!line.trim()){ flushPara(); flushList(); continue; }
+    if((m = line.match(/^(#{1,6})\s+(.*)$/))){ flushPara(); flushList(); const l = Math.min(m[1].length+2, 6); html += '<h'+l+'>'+inline(m[2])+'</h'+l+'>'; continue; }
+    if(/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())){ flushPara(); flushList(); html += '<hr>'; continue; }
+    if((m = line.match(/^\s*[-*+•]\s+(.*)$/))){ flushPara(); if(!list || list.type!=='ul'){ flushList(); list = {type:'ul', items:[]}; } list.items.push(m[1]); continue; }
+    if((m = line.match(/^\s*\d+[.)]\s+(.*)$/))){ flushPara(); if(!list || list.type!=='ol'){ flushList(); list = {type:'ol', items:[]}; } list.items.push(m[1]); continue; }
+    if((m = line.match(/^>\s?(.*)$/))){ flushPara(); flushList(); html += '<blockquote>'+inline(m[1])+'</blockquote>'; continue; }
+    if(list && /^\s{2,}\S/.test(raw)){ list.items[list.items.length-1] += ' '+line.trim(); continue; }
+    flushList();
+    para.push(line);
+  }
+  flushPara(); flushList();
+  return html;
+}
+
+/* ---------- API ---------- */
+function buildRequest(chat){
+  const m = MODELS.find(x=>x.id===settings.model) || MODELS[0];
+  const system = [];
+  if(chat.instruction && chat.instruction.trim()) system.push({type:'text', text: chat.instruction.trim()});
+  if(chat.doc && chat.doc.text){
+    system.push({type:'text', text: 'Das folgende Kontextdokument („'+chat.doc.name+'“) steht dir in diesem Chat dauerhaft zur Verfügung. Beziehe dich darauf, wenn es für die Frage relevant ist.\n\n<dokument name="'+chat.doc.name.replace(/"/g,'')+'">\n'+chat.doc.text+'\n</dokument>'});
+  }
+  if(system.length) system[system.length-1].cache_control = {type:'ephemeral'};
+
+  // Verlauf: leere Nachrichten überspringen, gleiche Rollen hintereinander zusammenfassen
+  const msgs = [];
+  for(const x of chat.messages){
+    if(!x.content || !x.content.trim()) continue;
+    const last = msgs[msgs.length-1];
+    if(last && last.role===x.role) last.content += '\n\n'+x.content; else msgs.push({role:x.role, content:x.content});
+  }
+  const messages = msgs.map((x,i)=> i===msgs.length-1 ? {role:x.role, content:[{type:'text', text:x.content, cache_control:{type:'ephemeral'}}]} : x);
+
+  const base = {model:m.id, max_tokens:32000, stream:true, messages};
+  if(system.length) base.system = system;
+  const headers = {'content-type':'application/json', 'x-api-key':settings.apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true'};
+
+  // Optionale Extras: Denkaufwand und serverseitiger Fallback bei Ablehnungen.
+  const body = {...base}; const extHeaders = {...headers}; let hasExtras = false;
+  if(m.effort){ body.output_config = {effort: settings.effort}; hasExtras = true; }
+  if(m.fallbacks){ body.fallbacks = 'default'; extHeaders['anthropic-beta'] = 'server-side-fallback-2026-07-01'; hasExtras = true; }
+  return {body, headers:extHeaders, plainBody:base, plainHeaders:headers, hasExtras};
+}
+
+function friendlyError(status, msg){
+  if(status===401) return 'API-Key ungültig oder abgelaufen. Bitte in den Einstellungen prüfen.';
+  if(status===403) return 'Kein Zugriff. Prüfe, ob dein API-Key für dieses Modell freigeschaltet ist.';
+  if(status===429) return 'Zu viele Anfragen oder Guthaben aufgebraucht. Bitte kurz warten und erneut versuchen.';
+  if(status===529 || status===503) return 'Der Dienst ist gerade überlastet. Bitte gleich noch einmal versuchen.';
+  return msg || ('Fehler '+status);
+}
+
+async function* streamMessage(req, signal){
+  let res;
+  try{
+    res = await fetch(API, {method:'POST', headers:req.headers, body:JSON.stringify(req.body), signal});
+    if(res.status===400 && req.hasExtras){
+      // Falls ein optionaler Parameter nicht akzeptiert wird: einmal ohne Extras probieren.
+      res = await fetch(API, {method:'POST', headers:req.plainHeaders, body:JSON.stringify(req.plainBody), signal});
+    }
+  }catch(e){
+    if(e.name==='AbortError') throw e;
+    throw new Error('Keine Verbindung zur API. Bist du online?');
+  }
+  if(!res.ok){
+    let msg = ''; try{ const j = await res.json(); msg = (j.error && j.error.message) || ''; }catch(e){}
+    throw new Error(friendlyError(res.status, msg));
+  }
+  const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+  while(true){
+    const {value, done} = await reader.read(); if(done) break;
+    buf += dec.decode(value, {stream:true});
+    let idx;
+    while((idx = buf.indexOf('\n\n')) >= 0){
+      const chunk = buf.slice(0, idx); buf = buf.slice(idx+2);
+      for(const line of chunk.split('\n')){
+        if(!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim(); if(!data) continue;
+        try{ yield JSON.parse(data); }catch(e){}
+      }
+    }
+  }
+}
+
+/* ---------- Chatliste ---------- */
+function renderList(){
+  const list = $('#chat-list'); list.innerHTML = '';
+  const sorted = [...chats].sort((a,b)=>b.updatedAt-a.updatedAt);
+  if(!sorted.length){ list.innerHTML = '<div class="empty">Noch keine Chats.<br>Tippe oben rechts auf <b>+</b>, um den ersten anzulegen.</div>'; return; }
+  for(const c of sorted){
+    const last = c.messages[c.messages.length-1];
+    const prev = last ? (last.role==='user' ? 'Du: ' : '') + last.content.replace(/\s+/g,' ').slice(0,140) : 'Noch keine Nachrichten';
+    const tags = [];
+    if(c.instruction && c.instruction.trim()) tags.push('<span class="tag">Anweisung</span>');
+    if(c.doc) tags.push('<span class="tag">'+esc(c.doc.name)+'</span>');
+    const b = document.createElement('button'); b.className = 'row';
+    b.innerHTML = '<div class="avatar">'+esc(initial(c.name))+'</div><div class="meta"><div class="name">'+esc(c.name||'Ohne Namen')+'</div><div class="prev">'+esc(prev)+'</div>'+(tags.length?'<div class="tags">'+tags.join('')+'</div>':'')+'</div><div class="chev">›</div>';
+    b.onclick = () => openChat(c.id);
+    list.appendChild(b);
+  }
+}
+
+async function newChat(){
+  const c = {id:uid(), name:'', instruction:'', doc:null, messages:[], createdAt:Date.now(), updatedAt:Date.now()};
+  chats.push(c); await DB.put(c); current = c;
+  openChatSettings(true);
+}
+
+function openChat(id){
+  current = chats.find(c=>c.id===id); if(!current) return;
+  renderChatView(); open('view-chat');
+}
+
+/* ---------- Chatansicht ---------- */
+function renderChatView(){
+  $('#chat-title .t').textContent = current.name || 'Ohne Namen';
+  $('#chat-title .sub').textContent = current.doc ? '📄 '+current.doc.name : (current.instruction && current.instruction.trim() ? 'mit Anweisung' : '');
+  renderMessages(); setSendState();
+}
+function renderMessages(){
+  const box = $('#messages'); box.innerHTML = '';
+  if(!current.messages.length){
+    const d = document.createElement('div'); d.className = 'hint';
+    const a = current.instruction && current.instruction.trim() ? '<b>Anweisung</b> gesetzt' : 'keine Anweisung';
+    const b = current.doc ? 'Dokument <b>'+esc(current.doc.name)+'</b>' : 'kein Dokument';
+    d.innerHTML = a+' · '+b+'<br><span style="font-size:14px">Tippe oben auf den Namen, um das zu ändern.</span>';
+    box.appendChild(d);
+  }
+  for(const m of current.messages) box.appendChild(msgEl(m));
+  if(streaming && streaming.chatId===current.id && streaming.el) box.appendChild(streaming.el);
+  scrollBottom(true);
+}
+function msgEl(m){
+  const d = document.createElement('div'); d.className = 'msg '+m.role;
+  if(m.role==='user') d.textContent = m.content; else d.innerHTML = renderMarkdown(m.content);
+  return d;
+}
+function scrollBottom(force){ const b = $('#messages'); if(force || stick){ b.scrollTop = b.scrollHeight; stick = true; } }
+$('#messages').addEventListener('scroll', ()=>{ const b = $('#messages'); stick = b.scrollHeight - b.scrollTop - b.clientHeight < 80; });
+
+function setSendState(){
+  const btn = $('#btn-send'); const ta = $('#input');
+  const busy = streaming && streaming.chatId===current?.id;
+  btn.innerHTML = busy ? STOP_ICON : SEND_ICON;
+  btn.disabled = busy ? false : !ta.value.trim();
+  btn.setAttribute('aria-label', busy ? 'Stopp' : 'Senden');
+}
+function autosize(ta){ ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 150)+'px'; }
+
+async function send(){
+  const ta = $('#input'); const text = ta.value.trim();
+  if(!text || streaming) return;
+  if(!settings.apiKey){ toast('Bitte zuerst deinen API-Key in den Einstellungen eintragen.'); syncSettingsUI(); open('view-settings'); return; }
+  ta.value = ''; autosize(ta);
+  current.messages.push({role:'user', content:text, ts:Date.now()});
+  touch(current); await DB.put(current);
+  renderMessages();
+  runAssistant();
+}
+
+let raf = 0;
+function scheduleRender(el, text){
+  if(raf) return;
+  raf = requestAnimationFrame(()=>{ raf = 0; el.classList.remove('pending'); el.innerHTML = renderMarkdown(text); scrollBottom(); });
+}
+
+async function runAssistant(){
+  const chat = current;
+  const controller = new AbortController();
+  const el = document.createElement('div'); el.className = 'msg assistant pending';
+  el.innerHTML = '<span class="dots"><span></span><span></span><span></span></span>';
+  streaming = {controller, chatId:chat.id, el};
+  $('#messages').querySelector('.err')?.remove();
+  $('#messages').appendChild(el); scrollBottom(true); setSendState();
+
+  let text = '', stop = null, error = null;
+  try{
+    for await (const ev of streamMessage(buildRequest(chat), controller.signal)){
+      if(ev.type==='content_block_start' && ev.content_block && ev.content_block.type==='thinking' && !text){ el.innerHTML = 'Denkt nach …'; }
+      else if(ev.type==='content_block_delta' && ev.delta && ev.delta.type==='text_delta'){ text += ev.delta.text; scheduleRender(el, text); }
+      else if(ev.type==='message_delta' && ev.delta){ stop = ev.delta.stop_reason || stop; }
+      else if(ev.type==='error'){ throw new Error((ev.error && ev.error.message) || 'Unbekannter Fehler'); }
+    }
+    if(stop==='refusal' && !text.trim()) text = '*Diese Anfrage wurde vom Sicherheitssystem des Modells abgelehnt.*';
+    if(stop==='max_tokens') text += '\n\n*(Die Antwort wurde wegen des Längenlimits abgeschnitten.)*';
+  }catch(e){
+    if(e.name!=='AbortError') error = e.message;
+  }
+  if(raf){ cancelAnimationFrame(raf); raf = 0; }
+  streaming = null;
+
+  if(text.trim()){
+    chat.messages.push({role:'assistant', content:text, ts:Date.now()});
+    touch(chat); await DB.put(chat);
+  }
+  if(current===chat){
+    el.remove();
+    if(text.trim()) $('#messages').appendChild(msgEl(chat.messages[chat.messages.length-1]));
+    if(error){
+      const d = document.createElement('div'); d.className = 'err';
+      d.innerHTML = esc(error)+'<button>Erneut versuchen</button>';
+      d.querySelector('button').onclick = () => { d.remove(); runAssistant(); };
+      $('#messages').appendChild(d);
+    }
+    scrollBottom(); setSendState();
+  }
+  renderList();
+}
+function stopStreaming(){ if(streaming) streaming.controller.abort(); }
+
+/* ---------- Chat-Einstellungen ---------- */
+function openChatSettings(isNew){
+  csIsNew = isNew; const c = current;
+  $('#cs-name').value = c.name || ''; $('#cs-instr').value = c.instruction || ''; $('#cs-doc').value = c.doc ? c.doc.text : '';
+  $('#cs-title').textContent = isNew ? 'Neuer Chat' : 'Chat-Einstellungen';
+  $('#btn-cs-back').textContent = isNew ? 'Abbrechen' : 'Zurück';
+  $('#cs-danger').hidden = isNew;
+  $('#doc-edit').hidden = true;
+  renderDocInfo();
+  open('view-chat-settings');
+  if(isNew) setTimeout(()=>$('#cs-name').focus(), 380);
+}
+function renderDocInfo(){
+  const d = current.doc;
+  $('#doc-empty').hidden = !!d; $('#doc-info').hidden = !d;
+  $('#btn-doc-toggle').hidden = !d; $('#btn-doc-remove').hidden = !d;
+  $('#btn-load-doc').textContent = d ? 'Anderes Dokument wählen …' : 'Dokument wählen (.md) …';
+  if(d){ const words = d.text.trim() ? d.text.trim().split(/\s+/).length : 0; $('#doc-info .fname').textContent = d.name; $('#doc-info .fsize').textContent = fmtSize(d.size)+' · '+words.toLocaleString('de-DE')+' Wörter'; }
+}
+function saveChatSettings(){
+  if(!current) return;
+  current.name = $('#cs-name').value.trim();
+  current.instruction = $('#cs-instr').value;
+  if(current.doc){ current.doc.text = $('#cs-doc').value; current.doc.size = byteLen(current.doc.text); }
+  DB.put(current);
+}
+const saveChatSettingsSoon = debounce(saveChatSettings, 400);
+function closeChatSettings(){
+  saveChatSettings();
+  renderChatView();
+  if(csIsNew) openInstant('view-chat');
+  close('view-chat-settings');
+  renderList();
+}
+async function cancelNewChat(){
+  await DB.del(current.id); chats = chats.filter(c=>c.id!==current.id); current = null;
+  close('view-chat-settings'); renderList();
+}
+
+/* ---------- Einstellungen ---------- */
+function initSettingsUI(){
+  const sel = $('#s-model'); sel.innerHTML = MODELS.map(m=>'<option value="'+m.id+'">'+m.label+'</option>').join('');
+  sel.onchange = () => { settings.model = sel.value; saveSettings(); syncSettingsUI(); };
+  $('#s-key').oninput = debounce(()=>{ settings.apiKey = $('#s-key').value.trim(); saveSettings(); }, 250);
+  $('#btn-key-toggle').onclick = () => { const i = $('#s-key'); i.type = i.type==='password' ? 'text' : 'password'; $('#btn-key-toggle').textContent = i.type==='password' ? 'Anzeigen' : 'Verbergen'; };
+  for(const [sel2,key] of [['#s-effort','effort'],['#s-theme','theme']]){
+    $(sel2).onclick = e => { const b = e.target.closest('button'); if(!b) return; settings[key] = b.dataset.v; saveSettings(); syncSettingsUI(); };
+  }
+  const sw = $('#s-accent'); sw.innerHTML = Object.entries(ACCENTS).map(([k,v])=>'<button class="swatch" data-v="'+k+'" style="background:'+v+'" aria-label="'+k+'"></button>').join('');
+  sw.onclick = e => { const b = e.target.closest('.swatch'); if(!b) return; settings.accent = b.dataset.v; saveSettings(); syncSettingsUI(); };
+}
+function syncSettingsUI(){
+  $('#s-key').value = settings.apiKey;
+  $('#s-model').value = settings.model;
+  const m = MODELS.find(x=>x.id===settings.model); $('#s-model-hint').textContent = m ? m.hint : '';
+  $('#s-effort').parentElement.hidden = !(m && m.effort);
+  for(const [sel,key] of [['#s-effort','effort'],['#s-theme','theme']]) $(sel).querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===settings[key]));
+  $('#s-accent').querySelectorAll('.swatch').forEach(b=>b.classList.toggle('on', b.dataset.v===settings.accent));
+}
+
+/* ---------- Tastatur / Viewport (iOS) ---------- */
+function fitApp(){
+  const vv = window.visualViewport; if(!vv) return;
+  const app = $('#app'); app.style.height = vv.height+'px'; app.style.top = vv.offsetTop+'px';
+  window.scrollTo(0,0); if(current) scrollBottom();
+}
+
+/* ---------- Verdrahtung ---------- */
+function bindUI(){
+  $('#btn-new').onclick = newChat;
+  $('#btn-settings').onclick = () => { syncSettingsUI(); open('view-settings'); };
+  $('#btn-settings-done').onclick = () => close('view-settings');
+  $('#btn-back').onclick = () => { close('view-chat'); renderList(); };
+  $('#chat-title').onclick = () => openChatSettings(false);
+  $('#btn-chat-settings').onclick = () => openChatSettings(false);
+  $('#btn-cs-done').onclick = closeChatSettings;
+  $('#btn-cs-back').onclick = () => csIsNew ? cancelNewChat() : closeChatSettings();
+  $('#btn-send').onclick = () => streaming ? stopStreaming() : send();
+  const ta = $('#input');
+  ta.oninput = () => { autosize(ta); setSendState(); };
+  ta.onkeydown = e => { if(e.key==='Enter' && !e.shiftKey && !matchMedia('(pointer: coarse)').matches){ e.preventDefault(); send(); } };
+  ta.onfocus = () => setTimeout(()=>scrollBottom(), 300);
+
+  for(const id of ['#cs-name','#cs-instr','#cs-doc']) $(id).oninput = saveChatSettingsSoon;
+  $('#btn-load-instr').onclick = () => $('#file-instr').click();
+  $('#file-instr').onchange = async e => { const f = e.target.files[0]; if(!f) return; $('#cs-instr').value = await f.text(); saveChatSettings(); e.target.value = ''; toast('Anweisung aus '+f.name+' geladen'); };
+  $('#btn-load-doc').onclick = () => $('#file-doc').click();
+  $('#file-doc').onchange = async e => { const f = e.target.files[0]; if(!f) return; const text = await f.text(); current.doc = {name:f.name, text, size:f.size}; $('#cs-doc').value = text; renderDocInfo(); saveChatSettings(); e.target.value = ''; toast('Dokument geladen'); };
+  $('#btn-doc-toggle').onclick = () => { $('#doc-edit').hidden = !$('#doc-edit').hidden; };
+  $('#btn-doc-remove').onclick = () => { current.doc = null; $('#cs-doc').value = ''; renderDocInfo(); saveChatSettings(); };
+  $('#btn-clear').onclick = async () => { if(!confirm('Alle Nachrichten in diesem Chat löschen? Anweisung und Dokument bleiben erhalten.')) return; if(streaming && streaming.chatId===current.id) stopStreaming(); current.messages = []; touch(current); await DB.put(current); toast('Verlauf gelöscht'); };
+  $('#btn-delete').onclick = async () => { if(!confirm('Diesen Chat endgültig löschen?')) return; if(streaming && streaming.chatId===current.id) stopStreaming(); await DB.del(current.id); chats = chats.filter(c=>c.id!==current.id); current = null; close('view-chat-settings'); close('view-chat'); renderList(); };
+
+  if(window.visualViewport){ visualViewport.addEventListener('resize', fitApp); visualViewport.addEventListener('scroll', fitApp); }
+}
+
+(async function main(){
+  try{ await DB.open(); chats = await DB.all(); }catch(e){ toast('Speicher konnte nicht geöffnet werden.'); }
+  applyTheme(); initSettingsUI(); bindUI(); renderList(); fitApp();
+  if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+})();
+</script>
+</body>
+</html>
