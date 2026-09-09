@@ -323,6 +323,15 @@ const byteLen = s => new Blob([s]).size;
 function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
 function touch(c){ c.updatedAt = Date.now(); }
 let toastT; function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>{ t.hidden=true; }, 3200); }
+// Zweistufige Bestätigung direkt auf dem Knopf (iOS unterdrückt confirm() in Home-Bildschirm-Apps manchmal).
+function armConfirm(btn, question, action){
+  const original = btn.textContent;
+  btn.onclick = () => {
+    if(btn.dataset.armed){ clearTimeout(btn._t); delete btn.dataset.armed; btn.textContent = original; action(); return; }
+    btn.dataset.armed = '1'; btn.textContent = question;
+    btn._t = setTimeout(()=>{ delete btn.dataset.armed; btn.textContent = original; }, 4000);
+  };
+}
 
 function open(id){ $('#'+id).classList.add('open'); }
 function close(id){ $('#'+id).classList.remove('open'); }
@@ -658,7 +667,7 @@ function initSettingsUI(){
   $('#s-key').oninput = debounce(()=>{ settings.apiKey = $('#s-key').value.trim(); saveSettings(); }, 250);
   $('#btn-key-toggle').onclick = () => { const i = $('#s-key'); i.type = i.type==='password' ? 'text' : 'password'; $('#btn-key-toggle').textContent = i.type==='password' ? 'Anzeigen' : 'Verbergen'; };
   $('#s-budget').oninput = debounce(()=>{ const v = parseFloat($('#s-budget').value.replace(',', '.')); settings.budget = isFinite(v) && v > 0 ? v : 0; saveSettings(); syncSpentUI(); updateBanner(); }, 300);
-  $('#btn-spent-reset').onclick = () => { if(!confirm('Verbrauchszähler auf 0 setzen? Sinnvoll, wenn du gerade Guthaben aufgeladen hast.')) return; settings.spent = 0; settings.bannerDismissed = false; saveSettings(); syncSpentUI(); updateBanner(); toast('Zähler zurückgesetzt'); };
+  armConfirm($('#btn-spent-reset'), 'Wirklich auf 0 setzen? Nochmal tippen', () => { settings.spent = 0; settings.bannerDismissed = false; saveSettings(); syncSpentUI(); updateBanner(); toast('Zähler zurückgesetzt'); });
   $('#banner-close').onclick = () => { settings.bannerDismissed = true; saveSettings(); updateBanner(); };
   for(const [sel2,key] of [['#s-effort','effort'],['#s-theme','theme']]){
     $(sel2).onclick = e => { const b = e.target.closest('button'); if(!b) return; settings[key] = b.dataset.v; saveSettings(); syncSettingsUI(); };
@@ -675,7 +684,7 @@ function syncSpentUI(){
   const el = $('#s-spent'), meter = $('#s-meter');
   if(budget > 0){
     const pct = spent / budget * 100;
-    el.textContent = fmtUsd(spent)+' von '+fmtUsd(budget)+' ('+(pct < 10 ? pct.toFixed(1) : Math.round(pct))+' %)';
+    el.textContent = fmtUsd(spent)+' von '+fmtUsd(budget)+' ('+(pct < 10 ? pct.toFixed(1).replace('.', ',') : Math.round(pct))+' %)';
     meter.hidden = false; const bar = meter.querySelector('i'); bar.style.width = Math.min(100, pct)+'%'; bar.classList.toggle('hot', pct >= WARN_AT*100);
   } else {
     el.textContent = fmtUsd(spent)+' bisher. Trag oben dein Guthaben ein, dann siehst du den Anteil.';
@@ -730,8 +739,8 @@ function bindUI(){
   $('#file-doc').onchange = async e => { const f = e.target.files[0]; if(!f) return; const text = await f.text(); current.doc = {name:f.name, text, size:f.size}; $('#cs-doc').value = text; renderDocInfo(); saveChatSettings(); e.target.value = ''; toast('Dokument geladen'); };
   $('#btn-doc-toggle').onclick = () => { $('#doc-edit').hidden = !$('#doc-edit').hidden; };
   $('#btn-doc-remove').onclick = () => { current.doc = null; $('#cs-doc').value = ''; renderDocInfo(); saveChatSettings(); };
-  $('#btn-clear').onclick = async () => { if(!confirm('Alle Nachrichten in diesem Chat löschen? Anweisung und Dokument bleiben erhalten.')) return; if(streaming && streaming.chatId===current.id) stopStreaming(); current.messages = []; touch(current); await DB.put(current); toast('Verlauf gelöscht'); };
-  $('#btn-delete').onclick = async () => { if(!confirm('Diesen Chat endgültig löschen?')) return; if(streaming && streaming.chatId===current.id) stopStreaming(); await DB.del(current.id); chats = chats.filter(c=>c.id!==current.id); current = null; close('view-chat-settings'); close('view-chat'); renderList(); };
+  armConfirm($('#btn-clear'), 'Alle Nachrichten löschen? Nochmal tippen', async () => { if(streaming && streaming.chatId===current.id) stopStreaming(); current.messages = []; touch(current); await DB.put(current); toast('Verlauf gelöscht'); });
+  armConfirm($('#btn-delete'), 'Chat endgültig löschen? Nochmal tippen', async () => { if(streaming && streaming.chatId===current.id) stopStreaming(); await DB.del(current.id); chats = chats.filter(c=>c.id!==current.id); current = null; close('view-chat-settings'); close('view-chat'); renderList(); });
 
   // Beim Zurückkehren in die App: Datumschips („Heute“, „Gestern“) und Listenzeiten neu berechnen.
   document.addEventListener('visibilitychange', () => { if(document.visibilityState==='visible'){ renderList(); if(current && !streaming) renderMessages(); } });
