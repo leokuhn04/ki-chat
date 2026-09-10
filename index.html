@@ -45,8 +45,10 @@ button{font:inherit;background:none;border:0;color:inherit;cursor:pointer;-webki
 .view{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--hdr);transform:translateX(100%);transition:transform .32s cubic-bezier(.32,.72,0,1);will-change:transform}
 .view.open{transform:none}
 #view-list{transform:none}
-.view.sheet{transform:translateY(100%)}
+.view.sheet{transform:translateX(-100%)}
 .view.sheet.open{transform:none}
+#view-chat{position:absolute}
+.down{position:absolute;right:14px;bottom:calc(var(--sab) + 70px);width:38px;height:38px;border-radius:50%;background:var(--ab);color:var(--icon);box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;z-index:3}
 .view.notrans{transition:none}
 
 /* Kopfzeile */
@@ -183,6 +185,7 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
     </header>
     <div class="banner" id="banner" hidden><span id="banner-text"></span><button id="banner-close" aria-label="Hinweis schließen"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="messages" id="messages"></div>
+    <button class="down" id="btn-down" hidden aria-label="Nach unten"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
     <div class="composer">
       <textarea id="input" rows="1" placeholder="Nachricht" autocomplete="off"></textarea>
       <button class="send" id="btn-send" aria-label="Senden" disabled></button>
@@ -217,6 +220,14 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <button class="btn danger" id="btn-doc-remove" hidden>Dokument entfernen</button>
       </div>
       <p class="group-caption">Steht der KI in diesem Chat dauerhaft zur Verfügung, ohne dass du es erneut schicken musst.</p>
+      <div class="group">
+        <div class="field"><label class="lbl" for="cs-model">Modell in diesem Chat</label><select id="cs-model"></select></div>
+        <div class="field"><label class="lbl" for="cs-thinking">Nachdenken vor der Antwort</label><select id="cs-thinking"><option value="">Wie in den Einstellungen</option><option value="on">An</option><option value="off">Aus</option></select></div>
+        <div class="field"><label class="lbl" for="cs-effort">Aufwand</label><select id="cs-effort"></select></div>
+      </div>
+      <p class="group-caption">„Wie in den Einstellungen“ heißt: Die Vorgabe aus den allgemeinen Einstellungen gilt. Alles andere gilt nur für diesen Chat.</p>
+      <div class="group" id="cs-continue-group"><button class="btn" id="btn-continue">In neuem Chat fortsetzen …</button></div>
+      <p class="group-caption" id="cs-continue-caption">Legt einen neuen Chat an, der diesen Verlauf komplett mitnimmt. Für das Modell ist es, als würdest du hier weiterschreiben.</p>
       <div class="group" id="cs-danger">
         <button class="btn danger" id="btn-clear">Verlauf löschen</button>
         <button class="btn danger" id="btn-delete">Chat löschen</button>
@@ -403,9 +414,14 @@ function renderMarkdown(src){
 }
 
 /* ---------- API ---------- */
+// Modell, Nachdenken und Aufwand: pro Chat einstellbar, sonst die allgemeine Vorgabe.
+function chatModel(chat){ return MODELS.find(x=>x.id===(chat.model || settings.model)) || MODELS[0]; }
+function chatThinking(chat){ return chat.thinking || settings.thinking; }
+function chatEffort(chat){ return EFFORTS.includes(chat.effort) ? chat.effort : settings.effort; }
+
 function buildRequest(chat){
-  const m = MODELS.find(x=>x.id===settings.model) || MODELS[0];
-  const thinkingOff = m.effort && settings.thinking === 'off';
+  const m = chatModel(chat);
+  const thinkingOff = m.effort && chatThinking(chat) === 'off';
   // Ohne Denkphase empfiehlt Anthropic diesen Zusatz, damit keine internen Markierungen in die Antwort rutschen.
   const system = [{type:'text', text: TIME_NOTE + (thinkingOff ? ' Gib keine internen oder System-XML-Tags in deiner Antwort aus.' : '')}];
   if(chat.instruction && chat.instruction.trim()) system.push({type:'text', text: chat.instruction.trim()});
@@ -416,7 +432,7 @@ function buildRequest(chat){
 
   // Verlauf mit Zeitstempeln: leere Nachrichten überspringen, gleiche Rollen hintereinander zusammenfassen
   const msgs = [];
-  for(const x of chat.messages){
+  for(const x of (chat.prelude || []).concat(chat.messages)){
     if(!x.content || !x.content.trim()) continue;
     const text = '['+stamp(x.ts || chat.updatedAt)+'] '+x.content;
     const last = msgs[msgs.length-1];
@@ -431,7 +447,8 @@ function buildRequest(chat){
   const body = {...base}; const extHeaders = {...headers}; let hasExtras = false;
   if(m.effort){
     // Ohne Denkphase erlaubt die API höchstens Aufwand „Viel“.
-    const effort = thinkingOff && EFFORTS.indexOf(settings.effort) > EFFORTS.indexOf('high') ? 'high' : settings.effort;
+    const wanted = chatEffort(chat);
+    const effort = thinkingOff && EFFORTS.indexOf(wanted) > EFFORTS.indexOf('high') ? 'high' : wanted;
     if(thinkingOff) body.thinking = {type:'disabled'};
     body.output_config = {effort};
     hasExtras = true;
@@ -518,10 +535,15 @@ function renderChatView(){
   else s.textContent = (current.instruction && current.instruction.trim()) ? 'mit Anweisung' : '';
   renderMessages(); setSendState(); updateBanner();
 }
-function dateChip(ts){ const d = document.createElement('div'); d.className = 'date'; d.textContent = dayLabel(ts); return d; }
+function dateChip(ts){ const d = document.createElement('div'); d.className = 'date'; d.dataset.ts = ts; d.textContent = dayLabel(ts); return d; }
+function refreshChips(){ $('#messages').querySelectorAll('.date[data-ts]').forEach(d => { d.textContent = dayLabel(+d.dataset.ts); }); }
 function renderMessages(){
   const box = $('#messages'); box.innerHTML = '';
-  if(!current.messages.length){
+  if(current.prelude && current.prelude.length){
+    const d = document.createElement('div'); d.className = 'hint';
+    d.innerHTML = 'Verlauf aus <b>'+esc(current.preludeFrom || 'einem anderen Chat')+'</b> übernommen: '+current.prelude.length+' Nachrichten, die das Modell kennt. Hier geht es nahtlos weiter.';
+    box.appendChild(d);
+  } else if(!current.messages.length){
     const d = document.createElement('div'); d.className = 'hint';
     const a = current.instruction && current.instruction.trim() ? '<b>Anweisung</b> gesetzt' : 'keine Anweisung';
     const b = current.doc ? 'Dokument <b>'+esc(current.doc.name)+'</b>' : 'kein Dokument';
@@ -538,8 +560,14 @@ function renderMessages(){
     const k = dayKey(Date.now()); if(k!==lastDay) box.appendChild(dateChip(Date.now()));
     box.appendChild(streaming.el);
   }
-  scrollBottom(true);
+  // Position wiederherstellen, wenn der Chat in dieser Sitzung schon offen war; sonst ganz unten beginnen.
+  if(scrollPos[current.id] != null){ box.scrollTop = scrollPos[current.id]; updateDownButton(); }
+  else scrollBottom(true);
 }
+const scrollPos = {};
+function rememberScroll(){ if(current) scrollPos[current.id] = $('#messages').scrollTop; }
+function atBottom(){ const b = $('#messages'); return b.scrollHeight - b.scrollTop - b.clientHeight < 40; }
+function updateDownButton(){ $('#btn-down').hidden = atBottom(); }
 function msgEl(m){
   const t = document.createElement('div'); t.className = 'turn '+(m.role==='user' ? 'u' : 'a');
   const b = document.createElement('div'); b.className = 'b';
@@ -549,8 +577,9 @@ function msgEl(m){
   b.appendChild(body); b.appendChild(time); t.appendChild(b);
   return t;
 }
-function scrollBottom(force){ const b = $('#messages'); if(force || stick){ b.scrollTop = b.scrollHeight; stick = true; } }
-$('#messages').addEventListener('scroll', ()=>{ const b = $('#messages'); stick = b.scrollHeight - b.scrollTop - b.clientHeight < 80; });
+// Die App scrollt nie von selbst mit. Nur ausdrücklich (eigene Nachricht, Chat öffnen, Knopf „Nach unten“).
+function scrollBottom(force){ if(!force) return; const b = $('#messages'); b.scrollTop = b.scrollHeight; updateDownButton(); }
+$('#messages').addEventListener('scroll', ()=>{ updateDownButton(); rememberScroll(); });
 
 function setSendState(){
   const btn = $('#btn-send'); const ta = $('#input');
@@ -568,14 +597,14 @@ async function send(){
   ta.value = ''; autosize(ta);
   current.messages.push({role:'user', content:text, ts:Date.now()});
   touch(current); await DB.put(current);
-  renderMessages();
+  delete scrollPos[current.id]; renderMessages();
   runAssistant();
 }
 
 let raf = 0;
 function scheduleRender(bubble, text){
   if(raf) return;
-  raf = requestAnimationFrame(()=>{ raf = 0; bubble.classList.remove('pending'); bubble.innerHTML = '<div class="body">'+renderMarkdown(text)+'</div>'; scrollBottom(); });
+  raf = requestAnimationFrame(()=>{ raf = 0; bubble.classList.remove('pending'); bubble.innerHTML = '<div class="body">'+renderMarkdown(text)+'</div>'; updateDownButton(); });
 }
 
 async function runAssistant(){
@@ -587,10 +616,10 @@ async function runAssistant(){
   el.appendChild(bubble);
   streaming = {controller, chatId:chat.id, el};
   $('#messages').querySelector('.err')?.remove();
-  $('#messages').appendChild(el); scrollBottom(true); setSendState();
+  $('#messages').appendChild(el); updateDownButton(); setSendState();
 
   let text = '', stop = null, error = null;
-  const usage = {}; let usedModel = settings.model;
+  const usage = {}; let usedModel = chatModel(chat).id;
   try{
     for await (const ev of streamMessage(buildRequest(chat), controller.signal)){
       if(ev.type==='message_start' && ev.message){ Object.assign(usage, ev.message.usage || {}); if(ev.message.model) usedModel = ev.message.model; }
@@ -630,7 +659,7 @@ async function runAssistant(){
       d.querySelector('button').onclick = () => { d.remove(); runAssistant(); };
       $('#messages').appendChild(d);
     }
-    scrollBottom(); setSendState();
+    updateDownButton(); setSendState();
   }
   renderList();
 }
@@ -640,9 +669,12 @@ function stopStreaming(){ if(streaming) streaming.controller.abort(); }
 function openChatSettings(isNew){
   csIsNew = isNew; const c = current;
   $('#cs-name').value = c.name || ''; $('#cs-instr').value = c.instruction || ''; $('#cs-doc').value = c.doc ? c.doc.text : '';
+  $('#cs-model').value = c.model || ''; $('#cs-thinking').value = c.thinking || ''; $('#cs-effort').value = EFFORTS.includes(c.effort) ? c.effort : '';
   $('#cs-title').textContent = isNew ? 'Neuer Chat' : 'Chat-Einstellungen';
   $('#btn-cs-back').textContent = isNew ? 'Abbrechen' : 'Zurück';
   $('#cs-danger').hidden = isNew;
+  const canContinue = !isNew && ((c.prelude||[]).length + c.messages.length) > 0;
+  $('#cs-continue-group').hidden = !canContinue; $('#cs-continue-caption').hidden = !canContinue;
   $('#doc-edit').hidden = true;
   renderDocInfo();
   open('view-chat-settings');
@@ -659,6 +691,7 @@ function saveChatSettings(){
   if(!current) return;
   current.name = $('#cs-name').value.trim();
   current.instruction = $('#cs-instr').value;
+  current.model = $('#cs-model').value || ''; current.thinking = $('#cs-thinking').value || ''; current.effort = $('#cs-effort').value || '';
   if(current.doc){ current.doc.text = $('#cs-doc').value; current.doc.size = byteLen(current.doc.text); }
   DB.put(current);
 }
@@ -670,14 +703,31 @@ function closeChatSettings(){
   close('view-chat-settings');
   renderList();
 }
+// „In neuem Chat fortsetzen“: neuer Chat mit denselben Vorgaben, der bisherige Verlauf wird als unsichtbarer Vorlauf mitgenommen.
+async function continueChat(){
+  saveChatSettings();
+  const old = current;
+  const c = {id:uid(), name:(old.name||'Chat')+' (Fortsetzung)', instruction:old.instruction||'', doc:old.doc ? {...old.doc} : null,
+    model:old.model||'', thinking:old.thinking||'', effort:old.effort||'',
+    prelude:(old.prelude||[]).concat(old.messages.map(m=>({role:m.role, content:m.content, ts:m.ts}))), preludeFrom:old.name||'Chat',
+    messages:[], createdAt:Date.now(), updatedAt:Date.now()};
+  chats.push(c); await DB.put(c);
+  close('view-chat-settings'); current = c; renderChatView(); renderList();
+  toast('Fortsetzung angelegt, der Verlauf geht mit');
+}
 async function cancelNewChat(){
   await DB.del(current.id); chats = chats.filter(c=>c.id!==current.id); current = null;
   close('view-chat-settings'); renderList();
 }
 
 /* ---------- Einstellungen ---------- */
+const EFFORT_LABELS = {low:'Wenig', medium:'Mittel', high:'Viel', xhigh:'Sehr viel', max:'Maximal'};
 function initSettingsUI(){
   const sel = $('#s-model'); sel.innerHTML = MODELS.map(m=>'<option value="'+m.id+'">'+m.label+'</option>').join('');
+  $('#cs-model').innerHTML = '<option value="">Wie in den Einstellungen</option>'+MODELS.map(m=>'<option value="'+m.id+'">'+m.label+'</option>').join('');
+  $('#cs-effort').innerHTML = '<option value="">Wie in den Einstellungen</option>'+EFFORTS.map(e=>'<option value="'+e+'">'+EFFORT_LABELS[e]+'</option>').join('');
+  for(const id of ['#cs-model','#cs-thinking','#cs-effort']) $(id).onchange = saveChatSettings;
+  $('#btn-continue').onclick = continueChat;
   sel.onchange = () => { settings.model = sel.value; saveSettings(); syncSettingsUI(); };
   $('#s-key').oninput = debounce(()=>{ settings.apiKey = $('#s-key').value.trim(); saveSettings(); }, 250);
   $('#btn-key-toggle').onclick = () => { const i = $('#s-key'); i.type = i.type==='password' ? 'text' : 'password'; $('#btn-key-toggle').textContent = i.type==='password' ? 'Anzeigen' : 'Verbergen'; };
@@ -727,6 +777,35 @@ function syncSettingsUI(){
   for(const [sel,key] of [['#s-thinking','thinking'],['#s-effort','effort'],['#s-theme','theme']]) $(sel).querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===settings[key]));
 }
 
+function leaveChat(){ rememberScroll(); close('view-chat'); renderList(); }
+
+/* ---------- Wischen vom linken Rand ---------- */
+// Chat → Übersicht, Chat-Einstellungen → Chat, Einstellungen → zu, Übersicht → Einstellungen hereinziehen.
+function initSwipe(){
+  const EDGE = 24; let sw = null;
+  const topView = () => {
+    if($('#view-settings').classList.contains('open')) return {el:$('#view-settings'), pull:false, done:()=>close('view-settings')};
+    if($('#view-chat-settings').classList.contains('open')) return {el:$('#view-chat-settings'), pull:false, done:()=>{ csIsNew ? cancelNewChat() : closeChatSettings(); }};
+    if($('#view-chat').classList.contains('open')) return {el:$('#view-chat'), pull:false, done:leaveChat};
+    return {el:$('#view-settings'), pull:true, done:()=>{ syncSettingsUI(); }};
+  };
+  document.addEventListener('touchstart', e => { const t = e.touches[0]; if(t.clientX > EDGE || e.touches.length > 1){ sw = null; return; } sw = {x:t.clientX, y:t.clientY, v:topView(), active:false, dx:0}; }, {passive:true});
+  document.addEventListener('touchmove', e => {
+    if(!sw) return; const t = e.touches[0]; const dx = t.clientX - sw.x, dy = t.clientY - sw.y;
+    if(!sw.active){ if(Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)){ sw = null; return; } if(dx < 10) return; sw.active = true; sw.v.el.classList.add('notrans'); if(sw.v.pull){ syncSettingsUI(); sw.v.el.classList.add('open'); } }
+    sw.dx = Math.max(0, dx); const w = sw.v.el.offsetWidth;
+    sw.v.el.style.transform = sw.v.pull ? 'translateX('+(-w + sw.dx)+'px)' : 'translateX('+sw.dx+'px)';
+  }, {passive:true});
+  const end = () => {
+    if(!sw) return; const s = sw; sw = null; if(!s.active) return;
+    const el = s.v.el, w = el.offsetWidth; el.classList.remove('notrans'); el.style.transform = '';
+    if(s.dx > w * 0.3){ if(s.v.pull) s.v.done(); else s.v.done(); }
+    else if(s.v.pull) el.classList.remove('open');
+  };
+  document.addEventListener('touchend', end, {passive:true});
+  document.addEventListener('touchcancel', end, {passive:true});
+}
+
 /* ---------- Tastatur / Viewport (iOS) ---------- */
 function fitApp(){
   // Die App immer exakt auf den sichtbaren Bereich legen. iOS verkleinert und verschiebt ihn,
@@ -746,7 +825,9 @@ function bindUI(){
   $('#btn-new').onclick = newChat;
   $('#btn-settings').onclick = () => { syncSettingsUI(); open('view-settings'); };
   $('#btn-settings-done').onclick = () => close('view-settings');
-  $('#btn-back').onclick = () => { close('view-chat'); renderList(); };
+  $('#btn-back').onclick = leaveChat;
+  $('#btn-down').onclick = () => scrollBottom(true);
+  initSwipe();
   $('#chat-title').onclick = () => openChatSettings(false);
   $('#btn-chat-settings').onclick = () => openChatSettings(false);
   $('#btn-cs-done').onclick = closeChatSettings;
@@ -769,7 +850,7 @@ function bindUI(){
   armConfirm($('#btn-delete'), 'Chat endgültig löschen? Nochmal tippen', async () => { if(streaming && streaming.chatId===current.id) stopStreaming(); await DB.del(current.id); chats = chats.filter(c=>c.id!==current.id); current = null; close('view-chat-settings'); close('view-chat'); renderList(); });
 
   // Beim Zurückkehren in die App: Datumschips („Heute“, „Gestern“) und Listenzeiten neu berechnen.
-  document.addEventListener('visibilitychange', () => { if(document.visibilityState==='visible'){ renderList(); if(current && !streaming) renderMessages(); } });
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState==='visible'){ renderList(); refreshChips(); } else rememberScroll(); });
 
   if(window.visualViewport){ visualViewport.addEventListener('resize', fitApp); visualViewport.addEventListener('scroll', fitApp); }
   window.addEventListener('resize', fitApp);
