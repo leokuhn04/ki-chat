@@ -291,9 +291,9 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
 const $ = s => document.querySelector(s);
 const API = 'https://api.anthropic.com/v1/messages';
 const MODELS = [
-  {id:'claude-opus-5',   label:'Claude Opus 5',    hint:'Stärkstes Modell. Standard.',            effort:true,  fallbacks:true},
-  {id:'claude-sonnet-5', label:'Claude Sonnet 5',  hint:'Schnell und deutlich günstiger.',        effort:true,  fallbacks:false},
-  {id:'claude-haiku-4-5',label:'Claude Haiku 4.5', hint:'Sehr schnell, am günstigsten.',          effort:false, fallbacks:false},
+  {id:'claude-opus-5',   label:'Claude Opus 5',    hint:'Stärkstes Modell. Standard.',            effort:true,  fallbacks:true,  anchor:true},
+  {id:'claude-sonnet-5', label:'Claude Sonnet 5',  hint:'Schnell und deutlich günstiger.',        effort:true,  fallbacks:false, anchor:false},
+  {id:'claude-haiku-4-5',label:'Claude Haiku 4.5', hint:'Sehr schnell, am günstigsten.',          effort:false, fallbacks:false, anchor:false},
 ];
 const DEFAULTS = {apiKey:'', model:'claude-opus-5', thinking:'on', effort:'medium', theme:'system', budget:0, spent:0, spentSince:0, bannerDismissed:false};
 const EFFORTS = ['low','medium','high','xhigh','max'];
@@ -433,6 +433,13 @@ function chatModel(chat){ return MODELS.find(x=>x.id===(chat.model || settings.m
 function chatThinking(chat){ return chat.thinking || settings.thinking; }
 function chatEffort(chat){ return EFFORTS.includes(chat.effort) ? chat.effort : settings.effort; }
 
+// Der Kern der Anweisung, markiert mit <kern>…</kern>. Wird pro Turn hinten angehängt,
+// weil die Beachtung der Anweisung mit der Länge des Gesprächs nachlässt.
+function kernBlock(instruction){
+  const m = /<kern>([\s\S]*?)<\/kern>/i.exec(instruction || '');
+  return m ? m[1].trim() : '';
+}
+
 function buildRequest(chat){
   const m = chatModel(chat);
   const thinkingOff = m.effort && chatThinking(chat) === 'off';
@@ -468,6 +475,17 @@ function buildRequest(chat){
     hasExtras = true;
   }
   if(m.fallbacks){ body.fallbacks = 'default'; extHeaders['anthropic-beta'] = 'server-side-fallback-2026-07-01'; hasExtras = true; }
+
+  // Anker: der Kern der Anweisung direkt vor der Antwort, als System-Nachricht im Verlauf.
+  // Muss auf eine Nutzer-Nachricht folgen und zuletzt stehen. Liegt hinter dem Cache-Breakpoint,
+  // kostet also nur seine eigenen Token. Nicht in plainBody, damit der Retry ohne Extras ihn weglässt.
+  if(m.anchor && messages.length && messages[messages.length-1].role === 'user'){
+    const kern = kernBlock(chat.instruction);
+    if(kern){
+      body.messages = messages.concat([{role:'system', content:'Der Kern deiner Anweisung, unverändert gültig für diese Antwort:\n\n'+kern}]);
+      hasExtras = true;
+    }
+  }
   return {body, headers:extHeaders, plainBody:base, plainHeaders:headers, hasExtras};
 }
 
