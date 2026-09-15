@@ -439,6 +439,12 @@ function kernBlock(instruction){
   const m = /<kern>([\s\S]*?)<\/kern>/i.exec(instruction || '');
   return m ? m[1].trim() : '';
 }
+// Die Grundsätze aus dem Kontextdokument, markiert mit <grundsaetze>…</grundsaetze>: Leos geklärte
+// Lesarten. Werden wie der Kern pro Turn nach vorn geholt, damit sie nicht neu hergeleitet werden.
+function grundsaetzeBlock(docText){
+  const m = /<grundsaetze>([\s\S]*?)<\/grundsaetze>/i.exec(docText || '');
+  return m ? m[1].trim() : '';
+}
 
 function buildRequest(chat){
   const m = chatModel(chat);
@@ -481,8 +487,12 @@ function buildRequest(chat){
   // kostet also nur seine eigenen Token. Nicht in plainBody, damit der Retry ohne Extras ihn weglässt.
   if(m.anchor && messages.length && messages[messages.length-1].role === 'user'){
     const kern = kernBlock(chat.instruction);
-    if(kern){
-      body.messages = messages.concat([{role:'system', content:'['+stamp(Date.now())+'] Jetzt. Und der Kern deiner Anweisung, unverändert gültig für diese Antwort:\n\n'+kern}]);
+    const gs = grundsaetzeBlock(chat.doc && chat.doc.text);
+    if(kern || gs){
+      let anker = '['+stamp(Date.now())+'] Jetzt.';
+      if(kern) anker += '\n\nDer Kern deiner Anweisung, unverändert gültig für diese Antwort:\n\n'+kern;
+      if(gs) anker += '\n\nUnd die Grundsätze aus dem Kontextdokument. Sie sind geklärt: du leitest sie nicht her, du wiegst sie nicht, du prüfst sie nicht gegen Beobachtungen. Widerspricht eine Überlegung von dir einem davon, ist die Überlegung falsch, nicht der Grundsatz.\n\n'+gs;
+      body.messages = messages.concat([{role:'system', content:anker}]);
       hasExtras = true;
     }
   }
