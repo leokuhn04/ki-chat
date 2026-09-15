@@ -482,7 +482,7 @@ function buildRequest(chat){
   if(m.anchor && messages.length && messages[messages.length-1].role === 'user'){
     const kern = kernBlock(chat.instruction);
     if(kern){
-      body.messages = messages.concat([{role:'system', content:'Der Kern deiner Anweisung, unverändert gültig für diese Antwort:\n\n'+kern}]);
+      body.messages = messages.concat([{role:'system', content:'['+stamp(Date.now())+'] Jetzt. Und der Kern deiner Anweisung, unverändert gültig für diese Antwort:\n\n'+kern}]);
       hasExtras = true;
     }
   }
