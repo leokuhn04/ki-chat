@@ -292,6 +292,7 @@ const $ = s => document.querySelector(s);
 const API = 'https://api.anthropic.com/v1/messages';
 const MODELS = [
   {id:'claude-opus-5',   label:'Claude Opus 5',    hint:'Stärkstes Modell. Standard.',            effort:true,  fallbacks:true,  anchor:true},
+  {id:'claude-opus-4-8', label:'Claude Opus 4.8',  hint:'Vorgänger von Opus 5.',                  effort:true,  fallbacks:false, anchor:true},
   {id:'claude-sonnet-5', label:'Claude Sonnet 5',  hint:'Schnell und deutlich günstiger.',        effort:true,  fallbacks:false, anchor:false},
   {id:'claude-haiku-4-5',label:'Claude Haiku 4.5', hint:'Sehr schnell, am günstigsten.',          effort:false, fallbacks:false, anchor:false},
 ];
@@ -476,7 +477,8 @@ function buildRequest(chat){
     // Ohne Denkphase erlaubt die API höchstens Aufwand „Viel“.
     const wanted = chatEffort(chat);
     const effort = thinkingOff && EFFORTS.indexOf(wanted) > EFFORTS.indexOf('high') ? 'high' : wanted;
-    if(thinkingOff) body.thinking = {type:'disabled'};
+    // Ausdrücklich setzen: Opus 5 denkt ohne Angabe von selbst, Opus 4.8 nicht.
+    body.thinking = thinkingOff ? {type:'disabled'} : {type:'adaptive'};
     body.output_config = {effort};
     hasExtras = true;
   }
