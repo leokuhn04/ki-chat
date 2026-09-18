@@ -22,7 +22,7 @@
 /* Tag: Messenger, hell */
 :root{
   --wall:#FFFFFF;--mesh:none;--paper:#EFEAE2;--pat:rgba(80,60,30,.11);--form:#F2F2F7;
-  --hdr:#F6F6F6;--hdrglass:rgba(246,246,246,.96);--glass:rgba(255,255,255,.6);--glassln:rgba(0,0,0,.1);--hdrico:#111B21;--hdrln:rgba(0,0,0,.14);--tx:#111B21;--mu:#667781;--icon:#3B876F;
+  --hdr:#F6F6F6;--hdrglass:#F6F6F6;--glass:rgba(255,255,255,.6);--glassln:rgba(0,0,0,.1);--hdrico:#111B21;--hdrln:rgba(0,0,0,.14);--tx:#111B21;--mu:#667781;--icon:#3B876F;
   --card:#FFFFFF;--cardb:rgba(0,0,0,.10);--chip:#FFFFFF;--chiptx:#54656F;
   --ubg:#3B876F;--ubtail:#3B876F;--ut:#FFFFFF;--utmu:rgba(255,255,255,.75);--tick:#C8E6DD;
   --ab:#FFFFFF;--abtail:#FFFFFF;--at:#111B21;--tmu:#8696A0;--acc:#3B876F;--sendg:#3B876F;--sendtx:#FFFFFF;
@@ -34,7 +34,7 @@
 /* Nacht: Messenger, dunkel */
 [data-theme=dark]{
   --wall:#0B141A;--mesh:none;--paper:#0B141A;--pat:rgba(255,255,255,.055);--form:#0B141A;
-  --hdr:#1F2C34;--hdrglass:rgba(31,44,52,.96);--glass:rgba(255,255,255,.08);--glassln:rgba(255,255,255,.12);--hdrico:#E9EDEF;--hdrln:rgba(255,255,255,.12);--tx:#E9EDEF;--mu:#8696A0;--icon:#00A884;
+  --hdr:#1F2C34;--hdrglass:#1F2C34;--glass:rgba(255,255,255,.08);--glassln:rgba(255,255,255,.12);--hdrico:#E9EDEF;--hdrln:rgba(255,255,255,.12);--tx:#E9EDEF;--mu:#8696A0;--icon:#00A884;
   --card:#1F2C34;--cardb:rgba(255,255,255,.10);--chip:#182229;--chiptx:#8696A0;
   --ubg:#005C4B;--ubtail:#005C4B;--ut:#E9EDEF;--utmu:rgba(233,237,239,.6);--tick:#53BDEB;
   --ab:#202C33;--abtail:#202C33;--at:#E9EDEF;--tmu:#8696A0;--acc:#00A884;--sendg:#00A884;--sendtx:#FFFFFF;
@@ -56,7 +56,7 @@ button{font:inherit;background:none;border:0;color:inherit;cursor:pointer;-webki
 .view.sheet{transform:translateX(-100%)}
 .view.sheet.open{transform:none}
 #view-chat{position:absolute}
-#view-chat header.bar{position:absolute;top:0;left:0;right:0;gap:8px;padding-left:10px;padding-right:10px;background:var(--hdrglass);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+#view-chat header.bar{position:absolute;top:0;left:0;right:0;gap:8px;padding-left:10px;padding-right:10px;background:var(--hdrglass)}
 #view-chat .messages{padding-top:calc(var(--sat) + 66px)}
 #view-chat .banner{margin-top:calc(var(--sat) + 58px)}
 #view-chat .banner:not([hidden]) + .messages{padding-top:10px}
