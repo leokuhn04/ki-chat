@@ -22,7 +22,7 @@
 /* Tag: Messenger, hell */
 :root{
   --wall:#FFFFFF;--mesh:none;--paper:#EFEAE2;--pat:rgba(80,60,30,.11);--form:#F2F2F7;
-  --hdr:#F6F6F6;--hdrglass:rgba(246,246,246,.78);--hdrln:rgba(0,0,0,.14);--tx:#111B21;--mu:#667781;--icon:#3B876F;
+  --hdr:#F6F6F6;--hdrglass:rgba(246,246,246,.78);--glass:rgba(255,255,255,.55);--glassln:rgba(0,0,0,.08);--hdrln:rgba(0,0,0,.14);--tx:#111B21;--mu:#667781;--icon:#3B876F;
   --card:#FFFFFF;--cardb:rgba(0,0,0,.10);--chip:#FFFFFF;--chiptx:#54656F;
   --ubg:#3B876F;--ubtail:#3B876F;--ut:#FFFFFF;--utmu:rgba(255,255,255,.75);--tick:#C8E6DD;
   --ab:#FFFFFF;--abtail:#FFFFFF;--at:#111B21;--tmu:#8696A0;--acc:#3B876F;--sendg:#3B876F;--sendtx:#FFFFFF;
@@ -34,7 +34,7 @@
 /* Nacht: Messenger, dunkel */
 [data-theme=dark]{
   --wall:#0B141A;--mesh:none;--paper:#0B141A;--pat:rgba(255,255,255,.055);--form:#0B141A;
-  --hdr:#1F2C34;--hdrglass:rgba(31,44,52,.82);--hdrln:rgba(255,255,255,.12);--tx:#E9EDEF;--mu:#8696A0;--icon:#00A884;
+  --hdr:#1F2C34;--hdrglass:rgba(31,44,52,.82);--glass:rgba(255,255,255,.08);--glassln:rgba(255,255,255,.12);--hdrln:rgba(255,255,255,.12);--tx:#E9EDEF;--mu:#8696A0;--icon:#00A884;
   --card:#1F2C34;--cardb:rgba(255,255,255,.10);--chip:#182229;--chiptx:#8696A0;
   --ubg:#005C4B;--ubtail:#005C4B;--ut:#E9EDEF;--utmu:rgba(233,237,239,.6);--tick:#53BDEB;
   --ab:#202C33;--abtail:#202C33;--at:#E9EDEF;--tmu:#8696A0;--acc:#00A884;--sendg:#00A884;--sendtx:#FFFFFF;
@@ -56,7 +56,7 @@ button{font:inherit;background:none;border:0;color:inherit;cursor:pointer;-webki
 .view.sheet{transform:translateX(-100%)}
 .view.sheet.open{transform:none}
 #view-chat{position:absolute}
-#view-chat header.bar{position:absolute;top:0;left:0;right:0;background:var(--hdrglass);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%)}
+#view-chat header.bar{position:absolute;top:0;left:0;right:0;gap:8px;padding-left:10px;padding-right:10px;background:var(--hdrglass);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%)}
 #view-chat .messages{padding-top:calc(var(--sat) + 62px)}
 #view-chat .banner{margin-top:calc(var(--sat) + 52px)}
 #view-chat .banner:not([hidden]) + .messages{padding-top:10px}
@@ -66,7 +66,11 @@ button{font:inherit;background:none;border:0;color:inherit;cursor:pointer;-webki
 /* Kopfzeile */
 header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--sat) + 6px) 10px 8px;min-height:calc(var(--sat) + 52px);background:var(--hdr);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border-bottom:.5px solid var(--hdrln);z-index:2}
 .bar .ib{color:var(--icon);display:flex;align-items:center;justify-content:center;min-width:40px;height:40px;padding:0}
-.bar .who{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:2px 4px;text-align:left}
+.bar .who{flex:1;min-width:0;display:flex;flex-direction:row;align-items:center;gap:10px;padding:2px 2px;text-align:left}
+.bar .who .av{flex:none;width:36px;height:36px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600}
+.bar .who .txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.bar .glass{flex:none;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--icon);background:var(--glass);border:.5px solid var(--glassln);box-shadow:0 1px 3px rgba(0,0,0,.08),inset 0 1px 0 rgba(255,255,255,.5);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);transition:transform .12s}
+.bar .glass:active{transform:scale(.92)}
 .bar .who .n{font-weight:600;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .bar .who .s{font-size:12.5px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:flex;align-items:center;gap:4px}
 .bar .who .s:empty{display:none}
@@ -199,9 +203,9 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
   <!-- Chat -->
   <section class="view" id="view-chat">
     <header class="bar">
-      <button class="ib" id="btn-back" aria-label="Zurück zu den Chats"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-      <button class="who" id="chat-title"><span class="n"></span><span class="s"></span></button>
-      <button class="ib" id="btn-chat-settings" aria-label="Chat-Einstellungen"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
+      <button class="glass" id="btn-back" aria-label="Zurück zu den Chats"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <button class="who" id="chat-title"><span class="av"></span><span class="txt"><span class="n"></span><span class="s"></span></span></button>
+      <button class="glass" id="btn-chat-settings" aria-label="Chat-Einstellungen"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     </header>
     <div class="banner" id="banner" hidden><span id="banner-text"></span><button id="banner-close" aria-label="Hinweis schließen"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="messages" id="messages"></div>
@@ -580,6 +584,7 @@ function openChat(id){
 /* ---------- Chatansicht ---------- */
 function renderChatView(){
   $('#chat-title .n').textContent = current.name || 'Ohne Namen';
+  $('#chat-title .av').textContent = ((current.name || '?').trim().charAt(0) || '?').toUpperCase();
   const s = $('#chat-title .s');
   if(current.doc){ s.innerHTML = DOC_ICON + esc(current.doc.name); }
   else s.textContent = (current.instruction && current.instruction.trim()) ? 'mit Anweisung' : '';
