@@ -1,2 +1,6 @@
 .DS_Store
 .claude/
+
+# Persoenliche Dokumente: nie ins Repo
+*.md
+!README.md
