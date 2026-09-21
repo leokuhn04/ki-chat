@@ -289,16 +289,16 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><span class="lbl">Stand</span><div id="s-spent" style="font-size:17px"></div><div class="muted" id="s-spent-sub" style="font-size:13px;margin-top:4px"></div><div class="meter" id="s-meter" hidden><i></i></div></div>
       </div>
       <div class="group">
-        <div class="field"><span class="lbl">Zwischenspeicher der API</span><div class="seg" id="s-cache"><button data-v="5m">5 Minuten</button><button data-v="1h">1 Stunde</button></div></div>
+        <div class="field"><span class="lbl">Zwischenspeicher der API</span><div class="seg" id="s-cache"><button data-v="auto">Automatisch</button><button data-v="5m">Immer</button><button data-v="off">Nie</button></div></div>
         <div class="field"><span class="lbl">Kosten je Antwort anzeigen</span><div class="seg" id="s-showcost"><button data-v="1">An</button><button data-v="0">Aus</button></div></div>
       </div>
-      <p class="group-caption">Anweisung und Dokument gehen bei jeder Nachricht mit. Die API kann sie zwischenspeichern, dann kostet die Wiederholung nur ein Zehntel. Der Speicher hält 5 Minuten oder eine Stunde. Schreibst du in Sitzungen mit Pausen, ist eine Stunde deutlich günstiger. Schreibst du nur einmal am Tag, lohnt sich keins von beidem.</p>
+      <p class="group-caption">Anweisung und Dokument gehen bei jeder Nachricht mit. Die API kann sie fünf Minuten zwischenspeichern, dann kostet die Wiederholung nur ein Zehntel. Das Anlegen kostet aber 25 Prozent Aufschlag, der verfällt, wenn du erst Stunden später weiterschreibst. Automatisch heißt: nur speichern, solange das Gespräch gerade läuft.</p>
       <p class="group-caption">Trag den Betrag ein, der in der Anthropic-Konsole als Guthaben steht. Ab diesem Moment zieht die App jede Antwort davon ab, gerechnet aus den Tokenzahlen mit den offiziellen Preisen, nur lokal auf diesem Gerät. Neuen Betrag eintragen, etwa nach dem Aufladen, und die Rechnung beginnt von vorn. Ab 90 % Verbrauch erscheint im Chat einmalig ein Hinweis.</p>
       <div class="group">
         <div class="field"><span class="lbl">Erscheinungsbild</span><div class="seg" id="s-theme"><button data-v="system">Automatisch</button><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></div></div>
       </div>
       <p class="group-caption">Alle Chats, Dokumente und der API-Key liegen ausschließlich auf diesem Gerät. Es gibt keinen Server dazwischen.</p>
-      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.2</p>
+      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.3</p>
     </div>
   </section>
 
@@ -317,7 +317,7 @@ const MODELS = [
   {id:'claude-sonnet-5', label:'Claude Sonnet 5',  hint:'Schnell und deutlich günstiger.',        effort:true,  fallbacks:false, anchor:false},
   {id:'claude-haiku-4-5',label:'Claude Haiku 4.5', hint:'Sehr schnell, am günstigsten.',          effort:false, fallbacks:false, anchor:false},
 ];
-const DEFAULTS = {apiKey:'', model:'claude-opus-5', thinking:'on', effort:'medium', theme:'system', budget:0, spent:0, spentSince:0, bannerDismissed:false, cacheTtl:'5m', showCost:true};
+const DEFAULTS = {apiKey:'', model:'claude-opus-5', thinking:'on', effort:'medium', theme:'system', budget:0, spent:0, spentSince:0, bannerDismissed:false, cacheTtl:'auto', showCost:true};
 const EFFORTS = ['low','medium','high','xhigh','max'];
 // Offizielle Preise in US-Dollar je Million Tokens (Eingabe / Ausgabe). Cache: Lesen 0,1×, Schreiben 1,25× der Eingabe.
 const PRICES = {'claude-opus-5':{in:5, out:25}, 'claude-opus-4-8':{in:5, out:25}, 'claude-sonnet-5':{in:2, out:10}, 'claude-haiku-4-5':{in:1, out:5}};
@@ -351,6 +351,8 @@ function loadSettings(){
   let s; try{ s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('kichat.settings')||'{}')); }catch(e){ s = {...DEFAULTS}; }
   if(s.effort==='off'){ s.thinking = 'off'; s.effort = 'medium'; }   // alte Einstellung übernehmen
   if(!EFFORTS.includes(s.effort)) s.effort = 'medium';
+  if(s.cacheTtl === '1h') s.cacheTtl = 'auto';   // doppelter Schreibpreis ohne Nutzen
+  if(!['auto','5m','off'].includes(s.cacheTtl)) s.cacheTtl = 'auto';
   if(s.thinking!=='off') s.thinking = 'on';
   return s;
 }
@@ -482,8 +484,15 @@ function buildRequest(chat){
   if(chat.doc && chat.doc.text){
     system.push({type:'text', text: 'Das folgende Kontextdokument („'+chat.doc.name+'“) steht dir in diesem Chat dauerhaft zur Verfügung. Beziehe dich darauf, wenn es für die Frage relevant ist.\n\n<dokument name="'+chat.doc.name.replace(/"/g,'')+'">\n'+chat.doc.text+'\n</dokument>'});
   }
-  const cc = settings.cacheTtl === '1h' ? {type:'ephemeral', ttl:'1h'} : {type:'ephemeral'};
-  system[system.length-1].cache_control = cc;
+  // Speichern lohnt nur, wenn bald wieder gelesen wird. Sonst ist der Aufschlag von 25 % verschenkt.
+  let cc = null;
+  if(settings.cacheTtl === '5m') cc = {type:'ephemeral'};
+  else if(settings.cacheTtl === 'auto'){
+    const letzte = (chat.messages || []).reduce((t,m) => Math.max(t, m.ts || 0), 0);
+    const frisch = letzte && (Date.now() - letzte) < 4*60*1000;   // Gespraech laeuft gerade
+    if(frisch || chat.cacheHit) cc = {type:'ephemeral'};
+  }
+  if(cc) system[system.length-1].cache_control = cc;
 
   // Verlauf mit Zeitstempeln: leere Nachrichten überspringen, gleiche Rollen hintereinander zusammenfassen
   const msgs = [];
@@ -493,7 +502,7 @@ function buildRequest(chat){
     const last = msgs[msgs.length-1];
     if(last && last.role===x.role) last.content += '\n\n'+text; else msgs.push({role:x.role, content:text});
   }
-  const messages = msgs.map((x,i)=> i===msgs.length-1 ? {role:x.role, content:[{type:'text', text:x.content, cache_control:cc}]} : x);
+  const messages = cc ? msgs.map((x,i)=> i===msgs.length-1 ? {role:x.role, content:[{type:'text', text:x.content, cache_control:cc}]} : x) : msgs;
 
   const base = {model:m.id, max_tokens:32000, stream:true, system, messages};
   const headers = {'content-type':'application/json', 'x-api-key':settings.apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true'};
@@ -718,6 +727,7 @@ async function runAssistant(){
   let lastCost = null;
   if(usage.input_tokens || usage.output_tokens){
     lastCost = {c:requestCost(usedModel, usage), i:usage.input_tokens||0, w:usage.cache_creation_input_tokens||0, r:usage.cache_read_input_tokens||0, o:usage.output_tokens||0};
+    chat.cacheHit = (usage.cache_read_input_tokens || 0) > 0;
     settings.spent = (settings.spent || 0) + lastCost.c;
     saveSettings(); updateBanner();
   }
