@@ -251,6 +251,10 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><label class="lbl" for="cs-effort">Aufwand</label><select id="cs-effort"></select></div>
       </div>
       <p class="group-caption">„Wie in den Einstellungen“ heißt: Die Vorgabe aus den allgemeinen Einstellungen gilt. Alles andere gilt nur für diesen Chat.</p>
+      <div class="group" id="cs-size-group">
+        <div class="field"><span class="lbl">Größe dieses Chats</span><div id="cs-size" style="font-size:15px;line-height:1.5"></div></div>
+      </div>
+      <p class="group-caption" id="cs-size-caption">Geschätzt aus der Zeichenzahl. Bei jeder Nachricht geht alles davon mit. Der Verlauf wächst mit jedem Austausch, das Dokument bleibt gleich groß.</p>
       <div class="group" id="cs-continue-group"><button class="btn" id="btn-continue">In neuem Chat fortsetzen …</button></div>
       <p class="group-caption" id="cs-continue-caption">Legt einen neuen Chat an, der diesen Verlauf komplett mitnimmt. Für das Modell ist es, als würdest du hier weiterschreiben.</p>
       <div class="group" id="cs-danger">
@@ -294,7 +298,7 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><span class="lbl">Erscheinungsbild</span><div class="seg" id="s-theme"><button data-v="system">Automatisch</button><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></div></div>
       </div>
       <p class="group-caption">Alle Chats, Dokumente und der API-Key liegen ausschließlich auf diesem Gerät. Es gibt keinen Server dazwischen.</p>
-      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.1</p>
+      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.2</p>
     </div>
   </section>
 
@@ -755,9 +759,26 @@ function openChatSettings(isNew){
   const canContinue = !isNew && ((c.prelude||[]).length + c.messages.length) > 0;
   $('#cs-continue-group').hidden = !canContinue; $('#cs-continue-caption').hidden = !canContinue;
   $('#doc-edit').hidden = true;
-  renderDocInfo();
+  renderDocInfo(); renderSize();
   open('view-chat-settings');
   if(isNew) setTimeout(()=>$('#cs-name').focus(), 380);
+}
+// Grobe Schaetzung: im Deutschen etwa drei Zeichen je Token. Genau genug, um zu sehen, wo das Geld liegt.
+const tokEst = t => Math.round((t || '').length / 3);
+function renderSize(){
+  const c = current; if(!c) return;
+  const tAnw = tokEst(c.instruction), tDoc = tokEst(c.doc && c.doc.text);
+  const tVor = (c.prelude || []).reduce((n,m) => n + tokEst(m.content) + 12, 0);
+  const tVerl = (c.messages || []).reduce((n,m) => n + tokEst(m.content) + 12, 0);
+  const ges = tAnw + tDoc + tVor + tVerl;
+  const m = chatModel(c), p = PRICES[m.id] || PRICES['claude-opus-5'];
+  const kalt = ges * p.in * 1.25 / 1e6, warm = ges * p.in * 0.1 / 1e6;
+  const zeile = (name, t) => t ? '<div style="display:flex;justify-content:space-between"><span>'+name+'</span><span style="font-variant-numeric:tabular-nums">'+fmtTok(t)+'</span></div>' : '';
+  $('#cs-size').innerHTML =
+    zeile('Anweisung', tAnw) + zeile('Dokument', tDoc) +
+    zeile('Übernommener Verlauf', tVor) + zeile('Verlauf in diesem Chat', tVerl) +
+    '<div style="display:flex;justify-content:space-between;border-top:1px solid var(--ln);margin-top:6px;padding-top:6px;font-weight:600"><span>Je Nachricht</span><span style="font-variant-numeric:tabular-nums">'+fmtTok(ges)+' Tokens</span></div>' +
+    '<div class="muted" style="font-size:13px;margin-top:6px">Eingabe je Nachricht: etwa '+fmtUsd(kalt)+' kalt, '+fmtUsd(warm)+' aus dem Speicher. Antwort und Denken kommen dazu.</div>';
 }
 function renderDocInfo(){
   const d = current.doc;
@@ -927,9 +948,9 @@ function bindUI(){
   $('#btn-load-instr').onclick = () => $('#file-instr').click();
   $('#file-instr').onchange = async e => { const f = e.target.files[0]; if(!f) return; $('#cs-instr').value = await f.text(); saveChatSettings(); e.target.value = ''; toast('Anweisung aus '+f.name+' geladen'); };
   $('#btn-load-doc').onclick = () => $('#file-doc').click();
-  $('#file-doc').onchange = async e => { const f = e.target.files[0]; if(!f) return; const text = await f.text(); current.doc = {name:f.name, text, size:f.size}; $('#cs-doc').value = text; renderDocInfo(); saveChatSettings(); e.target.value = ''; toast('Dokument geladen'); };
+  $('#file-doc').onchange = async e => { const f = e.target.files[0]; if(!f) return; const text = await f.text(); current.doc = {name:f.name, text, size:f.size}; $('#cs-doc').value = text; renderDocInfo(); renderSize(); saveChatSettings(); e.target.value = ''; toast('Dokument geladen'); };
   $('#btn-doc-toggle').onclick = () => { $('#doc-edit').hidden = !$('#doc-edit').hidden; };
-  $('#btn-doc-remove').onclick = () => { current.doc = null; $('#cs-doc').value = ''; renderDocInfo(); saveChatSettings(); };
+  $('#btn-doc-remove').onclick = () => { current.doc = null; $('#cs-doc').value = ''; renderDocInfo(); renderSize(); saveChatSettings(); };
   armConfirm($('#btn-clear'), 'Alle Nachrichten löschen? Nochmal tippen', async () => { if(streaming && streaming.chatId===current.id) stopStreaming(); current.messages = []; touch(current); await DB.put(current); toast('Verlauf gelöscht'); });
   armConfirm($('#btn-delete'), 'Chat endgültig löschen? Nochmal tippen', async () => { if(streaming && streaming.chatId===current.id) stopStreaming(); await DB.del(current.id); chats = chats.filter(c=>c.id!==current.id); current = null; close('view-chat-settings'); close('view-chat'); renderList(); });
 
