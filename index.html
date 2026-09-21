@@ -299,7 +299,7 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><span class="lbl">Erscheinungsbild</span><div class="seg" id="s-theme"><button data-v="system">Automatisch</button><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></div></div>
       </div>
       <p class="group-caption">Alle Chats, Dokumente und der API-Key liegen ausschließlich auf diesem Gerät. Es gibt keinen Server dazwischen.</p>
-      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.4</p>
+      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.5</p>
     </div>
   </section>
 
@@ -318,13 +318,13 @@ const MODELS = [
   {id:'claude-sonnet-5', label:'Claude Sonnet 5',  hint:'Schnell und deutlich günstiger.',        effort:true,  fallbacks:false, anchor:false},
   {id:'claude-haiku-4-5',label:'Claude Haiku 4.5', hint:'Sehr schnell, am günstigsten.',          effort:false, fallbacks:false, anchor:false},
 ];
-const DEFAULTS = {apiKey:'', model:'claude-opus-5', thinking:'on', effort:'medium', theme:'system', budget:0, spent:0, spentSince:0, bannerDismissed:false, cacheTtl:'auto', showCost:true};
+const DEFAULTS = {apiKey:'', model:'claude-opus-5', thinking:'on', effort:'medium', theme:'system', budget:0, spent:0, spentSince:0, bannerDismissed:false, cacheTtl:'auto', showCost:true, zpt:0};
 const EFFORTS = ['low','medium','high','xhigh','max'];
 // Offizielle Preise in US-Dollar je Million Tokens (Eingabe / Ausgabe). Cache: Lesen 0,1×, Schreiben 1,25× der Eingabe.
 const PRICES = {'claude-opus-5':{in:5, out:25}, 'claude-opus-4-8':{in:5, out:25}, 'claude-sonnet-5':{in:2, out:10}, 'claude-haiku-4-5':{in:1, out:5}};
 const WARN_AT = 0.9;
-function requestCost(model, u){
-  const p = PRICES[model] || PRICES[settings.model] || PRICES['claude-opus-5'];
+function requestCost(model, u, chat){
+  const p = PRICES[model] || PRICES[chat ? chatModel(chat).id : settings.model] || PRICES[settings.model] || PRICES['claude-opus-5'];
   const inp = u.input_tokens || 0, cr = u.cache_read_input_tokens || 0, out = u.output_tokens || 0;
   // Cache-Schreiben kostet 1,25× bei 5 Minuten, 2× bei einer Stunde.
   const cc = u.cache_creation || {};
@@ -489,9 +489,11 @@ function buildRequest(chat){
   let cc = null;
   if(settings.cacheTtl === '5m') cc = {type:'ephemeral'};
   else if(settings.cacheTtl === 'auto'){
-    const letzte = (chat.messages || []).reduce((t,m) => Math.max(t, m.ts || 0), 0);
-    const frisch = letzte && (Date.now() - letzte) < 4*60*1000;   // Gespraech laeuft gerade
-    if(frisch || chat.cacheHit) cc = {type:'ephemeral'};
+    // Nur die letzte ANTWORT zaehlt. Die eben getippte Nutzernachricht steht schon im Verlauf
+    // und wuerde den Test immer erfuellen; dann waere die Automatik wirkungslos.
+    const letzteAntwort = (chat.messages || []).filter(m => m.role === 'assistant').reduce((t,m) => Math.max(t, m.ts || 0), 0);
+    const frisch = letzteAntwort && (Date.now() - letzteAntwort) < 4*60*1000;   // Gespraech laeuft gerade
+    if(frisch) cc = {type:'ephemeral'};
   }
   if(cc) system[system.length-1].cache_control = cc;
 
@@ -535,7 +537,9 @@ function buildRequest(chat){
       hasExtras = true;
     }
   }
-  return {body, headers:extHeaders, plainBody:base, plainHeaders:headers, hasExtras};
+  // Zeichenzahl des tatsaechlich gesendeten Vorbaus, um die Token-Schaetzung zu kalibrieren
+  const zeichen = JSON.stringify(body.system).length + JSON.stringify(body.messages).length;
+  return {body, headers:extHeaders, plainBody:base, plainHeaders:headers, hasExtras, zeichen};
 }
 
 function friendlyError(status, msg){
@@ -712,10 +716,11 @@ async function runAssistant(){
   let text = '', stop = null, error = null;
   const usage = {}; let usedModel = chatModel(chat).id;
   try{
-    for await (const ev of streamMessage(buildRequest(chat), controller.signal)){
+    const req = buildRequest(chat);
+    for await (const ev of streamMessage(req, controller.signal)){
       if(ev.type==='message_start' && ev.message){ Object.assign(usage, ev.message.usage || {}); if(ev.message.model) usedModel = ev.message.model; }
       else if(ev.type==='content_block_start' && ev.content_block && ev.content_block.type==='thinking' && !text){ bubble.textContent = 'Denkt nach …'; }
-      else if(ev.type==='content_block_delta' && ev.delta && ev.delta.type==='text_delta'){ text += ev.delta.text; scheduleRender(bubble, text); }
+      else if(ev.type==='content_block_delta' && ev.delta && ev.delta.type==='text_delta'){ text += ev.delta.text; scheduleRender(bubble, text); if(!usage.output_tokens) usage._teil = (usage._teil||0) + Math.ceil(ev.delta.text.length/3.2); }
       else if(ev.type==='message_delta'){ if(ev.delta) stop = ev.delta.stop_reason || stop; if(ev.usage) Object.assign(usage, ev.usage); }
       else if(ev.type==='error'){ throw new Error((ev.error && ev.error.message) || 'Unbekannter Fehler'); }
     }
@@ -728,10 +733,18 @@ async function runAssistant(){
   streaming = null;
 
   // Kosten dieser Anfrage aus den gemeldeten Tokenzahlen aufsummieren (nur lokal, das Modell sieht davon nichts).
+  // Abbruch: message_delta kommt nie, also die gestreamten Zeichen als Ausgabe ansetzen.
+  if(!usage.output_tokens && usage._teil) usage.output_tokens = usage._teil;
   let lastCost = null;
   if(usage.input_tokens || usage.output_tokens){
+    // Umrechnung Zeichen je Token aus den echten Zahlen lernen
+    const promptTok = (usage.input_tokens||0) + (usage.cache_creation_input_tokens||0) + (usage.cache_read_input_tokens||0);
+    if(promptTok > 5000 && req && req.zeichen){
+      const neu = req.zeichen / promptTok;
+      settings.zpt = settings.zpt ? settings.zpt*0.7 + neu*0.3 : neu;
+    }
     const ccu = usage.cache_creation || {};
-    lastCost = {c:requestCost(usedModel, usage), i:usage.input_tokens||0, w:usage.cache_creation_input_tokens||0, r:usage.cache_read_input_tokens||0, o:usage.output_tokens||0,
+    lastCost = {c:requestCost(usedModel, usage, chat), i:usage.input_tokens||0, w:usage.cache_creation_input_tokens||0, r:usage.cache_read_input_tokens||0, o:usage.output_tokens||0,
       w1h: ccu.ephemeral_1h_input_tokens || 0, ttl: settings.cacheTtl, m: usedModel};
     chat.cacheHit = (usage.cache_read_input_tokens || 0) > 0;
     settings.spent = (settings.spent || 0) + lastCost.c;
@@ -780,7 +793,7 @@ function openChatSettings(isNew){
   if(isNew) setTimeout(()=>$('#cs-name').focus(), 380);
 }
 // Grobe Schaetzung: im Deutschen etwa drei Zeichen je Token. Genau genug, um zu sehen, wo das Geld liegt.
-const tokEst = t => Math.round((t || '').length / 3);
+const tokEst = t => Math.round((t || '').length / (settings.zpt || 2.6));
 function renderSize(){
   const c = current; if(!c) return;
   const tAnw = tokEst(c.instruction), tDoc = tokEst(c.doc && c.doc.text);
@@ -788,13 +801,15 @@ function renderSize(){
   const tVerl = (c.messages || []).reduce((n,m) => n + tokEst(m.content) + 12, 0);
   const ges = tAnw + tDoc + tVor + tVerl;
   const m = chatModel(c), p = PRICES[m.id] || PRICES['claude-opus-5'];
-  const kalt = ges * p.in * 1.25 / 1e6, warm = ges * p.in * 0.1 / 1e6;
+  const schreibt = settings.cacheTtl !== 'off';
+  const kalt = ges * p.in * (schreibt ? 1.25 : 1) / 1e6, warm = ges * p.in * 0.1 / 1e6;
   const zeile = (name, t) => t ? '<div style="display:flex;justify-content:space-between"><span>'+name+'</span><span style="font-variant-numeric:tabular-nums">'+fmtTok(t)+'</span></div>' : '';
   $('#cs-size').innerHTML =
     zeile('Anweisung', tAnw) + zeile('Dokument', tDoc) +
     zeile('Übernommener Verlauf', tVor) + zeile('Verlauf in diesem Chat', tVerl) +
     '<div style="display:flex;justify-content:space-between;border-top:1px solid var(--ln);margin-top:6px;padding-top:6px;font-weight:600"><span>Je Nachricht</span><span style="font-variant-numeric:tabular-nums">'+fmtTok(ges)+' Tokens</span></div>' +
-    '<div class="muted" style="font-size:13px;margin-top:6px">Eingabe je Nachricht: etwa '+fmtUsd(kalt)+' kalt, '+fmtUsd(warm)+' aus dem Speicher. Antwort und Denken kommen dazu.</div>';
+    '<div class="muted" style="font-size:13px;margin-top:6px">Eingabe je Nachricht: etwa '+fmtUsd(kalt)+' kalt'+(schreibt ? ' mit Aufschlag' : '')+', '+fmtUsd(warm)+' aus dem Speicher. Antwort und Denken kommen dazu.'+
+      (settings.zpt ? ' Umrechnung an deinen echten Zahlen kalibriert.' : ' Noch nicht kalibriert, schick eine Nachricht.')+'</div>';
 }
 function renderDocInfo(){
   const d = current.doc;
