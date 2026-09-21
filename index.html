@@ -131,6 +131,7 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
 .b a{color:var(--icon)}
 .b hr{border:0;border-top:1px solid var(--ln)}
 .b.pending{color:var(--tmu);font-size:15px}
+.cost{font-size:11px;color:var(--tmu);margin:2px 4px 0;font-variant-numeric:tabular-nums}
 .dots{display:inline-flex;gap:4px;padding:5px 2px 3px}
 .dots span{width:7px;height:7px;border-radius:50%;background:var(--tmu);opacity:.4;animation:blink 1.3s infinite}
 .dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
@@ -283,12 +284,17 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><label class="lbl" for="s-budget">Guthaben laut Anthropic-Konsole (US-Dollar)</label><input type="text" id="s-budget" inputmode="decimal" placeholder="z. B. 20" autocomplete="off"></div>
         <div class="field"><span class="lbl">Stand</span><div id="s-spent" style="font-size:17px"></div><div class="muted" id="s-spent-sub" style="font-size:13px;margin-top:4px"></div><div class="meter" id="s-meter" hidden><i></i></div></div>
       </div>
+      <div class="group">
+        <div class="field"><span class="lbl">Zwischenspeicher der API</span><div class="seg" id="s-cache"><button data-v="5m">5 Minuten</button><button data-v="1h">1 Stunde</button></div></div>
+        <div class="field"><span class="lbl">Kosten je Antwort anzeigen</span><div class="seg" id="s-showcost"><button data-v="1">An</button><button data-v="0">Aus</button></div></div>
+      </div>
+      <p class="group-caption">Anweisung und Dokument gehen bei jeder Nachricht mit. Die API kann sie zwischenspeichern, dann kostet die Wiederholung nur ein Zehntel. Der Speicher hält 5 Minuten oder eine Stunde. Schreibst du in Sitzungen mit Pausen, ist eine Stunde deutlich günstiger. Schreibst du nur einmal am Tag, lohnt sich keins von beidem.</p>
       <p class="group-caption">Trag den Betrag ein, der in der Anthropic-Konsole als Guthaben steht. Ab diesem Moment zieht die App jede Antwort davon ab, gerechnet aus den Tokenzahlen mit den offiziellen Preisen, nur lokal auf diesem Gerät. Neuen Betrag eintragen, etwa nach dem Aufladen, und die Rechnung beginnt von vorn. Ab 90 % Verbrauch erscheint im Chat einmalig ein Hinweis.</p>
       <div class="group">
         <div class="field"><span class="lbl">Erscheinungsbild</span><div class="seg" id="s-theme"><button data-v="system">Automatisch</button><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></div></div>
       </div>
       <p class="group-caption">Alle Chats, Dokumente und der API-Key liegen ausschließlich auf diesem Gerät. Es gibt keinen Server dazwischen.</p>
-      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-18.4</p>
+      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.1</p>
     </div>
   </section>
 
@@ -307,16 +313,21 @@ const MODELS = [
   {id:'claude-sonnet-5', label:'Claude Sonnet 5',  hint:'Schnell und deutlich günstiger.',        effort:true,  fallbacks:false, anchor:false},
   {id:'claude-haiku-4-5',label:'Claude Haiku 4.5', hint:'Sehr schnell, am günstigsten.',          effort:false, fallbacks:false, anchor:false},
 ];
-const DEFAULTS = {apiKey:'', model:'claude-opus-5', thinking:'on', effort:'medium', theme:'system', budget:0, spent:0, spentSince:0, bannerDismissed:false};
+const DEFAULTS = {apiKey:'', model:'claude-opus-5', thinking:'on', effort:'medium', theme:'system', budget:0, spent:0, spentSince:0, bannerDismissed:false, cacheTtl:'5m', showCost:true};
 const EFFORTS = ['low','medium','high','xhigh','max'];
 // Offizielle Preise in US-Dollar je Million Tokens (Eingabe / Ausgabe). Cache: Lesen 0,1×, Schreiben 1,25× der Eingabe.
-const PRICES = {'claude-opus-5':{in:5, out:25}, 'claude-sonnet-5':{in:2, out:10}, 'claude-haiku-4-5':{in:1, out:5}};
+const PRICES = {'claude-opus-5':{in:5, out:25}, 'claude-opus-4-8':{in:5, out:25}, 'claude-sonnet-5':{in:2, out:10}, 'claude-haiku-4-5':{in:1, out:5}};
 const WARN_AT = 0.9;
 function requestCost(model, u){
   const p = PRICES[model] || PRICES[settings.model] || PRICES['claude-opus-5'];
-  const inp = u.input_tokens || 0, cw = u.cache_creation_input_tokens || 0, cr = u.cache_read_input_tokens || 0, out = u.output_tokens || 0;
-  return (inp*p.in + cw*p.in*1.25 + cr*p.in*0.1 + out*p.out) / 1e6;
+  const inp = u.input_tokens || 0, cr = u.cache_read_input_tokens || 0, out = u.output_tokens || 0;
+  // Cache-Schreiben kostet 1,25× bei 5 Minuten, 2× bei einer Stunde.
+  const cc = u.cache_creation || {};
+  const w1h = cc.ephemeral_1h_input_tokens || 0;
+  const w5m = cc.ephemeral_5m_input_tokens != null ? cc.ephemeral_5m_input_tokens : Math.max(0, (u.cache_creation_input_tokens||0) - w1h);
+  return (inp*p.in + w5m*p.in*1.25 + w1h*p.in*2 + cr*p.in*0.1 + out*p.out) / 1e6;
 }
+const fmtTok = n => n >= 1000 ? (n/1000).toFixed(n >= 10000 ? 0 : 1).replace('.', ',')+'k' : String(n);
 const fmtUsd = v => v.toLocaleString('de-DE', {style:'currency', currency:'USD', minimumFractionDigits:2, maximumFractionDigits:2});
 const SEND_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
 const STOP_ICON = '<svg viewBox="0 0 24 24" width="16" height="16"><rect x="5" y="5" width="14" height="14" rx="3" fill="currentColor"/></svg>';
@@ -467,17 +478,18 @@ function buildRequest(chat){
   if(chat.doc && chat.doc.text){
     system.push({type:'text', text: 'Das folgende Kontextdokument („'+chat.doc.name+'“) steht dir in diesem Chat dauerhaft zur Verfügung. Beziehe dich darauf, wenn es für die Frage relevant ist.\n\n<dokument name="'+chat.doc.name.replace(/"/g,'')+'">\n'+chat.doc.text+'\n</dokument>'});
   }
-  system[system.length-1].cache_control = {type:'ephemeral'};
+  const cc = settings.cacheTtl === '1h' ? {type:'ephemeral', ttl:'1h'} : {type:'ephemeral'};
+  system[system.length-1].cache_control = cc;
 
   // Verlauf mit Zeitstempeln: leere Nachrichten überspringen, gleiche Rollen hintereinander zusammenfassen
   const msgs = [];
   for(const x of (chat.prelude || []).concat(chat.messages)){
     if(!x.content || !x.content.trim()) continue;
-    const text = '['+stamp(x.ts || chat.updatedAt)+'] '+x.content;
+    const text = '['+stamp(x.ts || chat.createdAt)+'] '+x.content;
     const last = msgs[msgs.length-1];
     if(last && last.role===x.role) last.content += '\n\n'+text; else msgs.push({role:x.role, content:text});
   }
-  const messages = msgs.map((x,i)=> i===msgs.length-1 ? {role:x.role, content:[{type:'text', text:x.content, cache_control:{type:'ephemeral'}}]} : x);
+  const messages = msgs.map((x,i)=> i===msgs.length-1 ? {role:x.role, content:[{type:'text', text:x.content, cache_control:cc}]} : x);
 
   const base = {model:m.id, max_tokens:32000, stream:true, system, messages};
   const headers = {'content-type':'application/json', 'x-api-key':settings.apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true'};
@@ -631,6 +643,12 @@ function msgEl(m){
   if(m.role==='user') body.textContent = m.content; else body.innerHTML = renderMarkdown(m.content);
   const time = document.createElement('span'); time.className = 't'; time.textContent = timeLabel(m.ts || current.updatedAt);
   b.appendChild(body); b.appendChild(time); t.appendChild(b);
+  if(m.cost && settings.showCost){
+    const c = document.createElement('div'); c.className = 'cost';
+    const gespart = m.cost.r > 0 ? ' · '+fmtTok(m.cost.r)+' aus Speicher' : (m.cost.w > 0 ? ' · '+fmtTok(m.cost.w)+' neu gespeichert' : '');
+    c.textContent = fmtUsd(m.cost.c)+gespart+' · '+fmtTok(m.cost.o)+' Antwort';
+    t.appendChild(c);
+  }
   return t;
 }
 // Die App scrollt nie von selbst mit. Nur ausdrücklich (eigene Nachricht, Chat öffnen, Knopf „Nach unten“).
@@ -693,8 +711,10 @@ async function runAssistant(){
   streaming = null;
 
   // Kosten dieser Anfrage aus den gemeldeten Tokenzahlen aufsummieren (nur lokal, das Modell sieht davon nichts).
+  let lastCost = null;
   if(usage.input_tokens || usage.output_tokens){
-    settings.spent = (settings.spent || 0) + requestCost(usedModel, usage);
+    lastCost = {c:requestCost(usedModel, usage), i:usage.input_tokens||0, w:usage.cache_creation_input_tokens||0, r:usage.cache_read_input_tokens||0, o:usage.output_tokens||0};
+    settings.spent = (settings.spent || 0) + lastCost.c;
     saveSettings(); updateBanner();
   }
 
@@ -703,7 +723,9 @@ async function runAssistant(){
   if(echo && /\d/.test(echo[1])) text = text.slice(echo[0].length);
 
   if(text.trim()){
-    chat.messages.push({role:'assistant', content:text, ts:Date.now()});
+    const am = {role:'assistant', content:text, ts:Date.now()};
+    if(lastCost) am.cost = lastCost;
+    chat.messages.push(am);
     touch(chat); await DB.put(chat);
   }
   if(current===chat){
@@ -795,6 +817,8 @@ function initSettingsUI(){
     if(budget !== (settings.budget || 0)){ settings.budget = budget; settings.spent = 0; settings.spentSince = budget ? Date.now() : 0; settings.bannerDismissed = false; saveSettings(); syncSpentUI(); updateBanner(); }
   }, 400);
   $('#banner-close').onclick = () => { settings.bannerDismissed = true; saveSettings(); updateBanner(); };
+  $('#s-cache').onclick = e => { const b = e.target.closest('button'); if(!b) return; settings.cacheTtl = b.dataset.v; saveSettings(); syncSettingsUI(); };
+  $('#s-showcost').onclick = e => { const b = e.target.closest('button'); if(!b) return; settings.showCost = b.dataset.v === '1'; saveSettings(); syncSettingsUI(); if(current) renderMessages(); };
   for(const [sel2,key] of [['#s-thinking','thinking'],['#s-effort','effort'],['#s-theme','theme']]){
     $(sel2).onclick = e => { const b = e.target.closest('button'); if(!b || b.disabled) return; settings[key] = b.dataset.v; saveSettings(); syncSettingsUI(); };
   }
@@ -832,6 +856,8 @@ function syncSettingsUI(){
   if(off && EFFORTS.indexOf(settings.effort) > EFFORTS.indexOf('high')){ settings.effort = 'high'; localStorage.setItem('kichat.settings', JSON.stringify(settings)); }
   $('#s-effort').querySelectorAll('button').forEach(b => { const tooHigh = off && EFFORTS.indexOf(b.dataset.v) > EFFORTS.indexOf('high'); b.disabled = tooHigh; b.style.opacity = tooHigh ? '.35' : ''; });
   for(const [sel,key] of [['#s-thinking','thinking'],['#s-effort','effort'],['#s-theme','theme']]) $(sel).querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===settings[key]));
+  $('#s-cache').querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===settings.cacheTtl));
+  $('#s-showcost').querySelectorAll('button').forEach(b=>b.classList.toggle('on', (b.dataset.v==='1')===!!settings.showCost));
 }
 
 function animateGroups(sel){ $(sel).querySelectorAll('.group').forEach((g,i) => { g.classList.remove('rise'); void g.offsetWidth; g.style.animationDelay = (i*50)+'ms'; g.classList.add('rise'); }); }
