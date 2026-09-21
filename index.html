@@ -291,6 +291,7 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
       <div class="group">
         <div class="field"><span class="lbl">Zwischenspeicher der API</span><div class="seg" id="s-cache"><button data-v="auto">Automatisch</button><button data-v="5m">Immer</button><button data-v="off">Nie</button></div></div>
         <div class="field"><span class="lbl">Kosten je Antwort anzeigen</span><div class="seg" id="s-showcost"><button data-v="1">An</button><button data-v="0">Aus</button></div></div>
+        <div class="field"><span class="lbl">Befund</span><div id="s-cache-hinweis" style="font-size:14px;line-height:1.5"></div></div>
       </div>
       <p class="group-caption">Anweisung und Dokument gehen bei jeder Nachricht mit. Die API kann sie fünf Minuten zwischenspeichern, dann kostet die Wiederholung nur ein Zehntel. Das Anlegen kostet aber 25 Prozent Aufschlag, der verfällt, wenn du erst Stunden später weiterschreibst. Automatisch heißt: nur speichern, solange das Gespräch gerade läuft.</p>
       <p class="group-caption">Trag den Betrag ein, der in der Anthropic-Konsole als Guthaben steht. Ab diesem Moment zieht die App jede Antwort davon ab, gerechnet aus den Tokenzahlen mit den offiziellen Preisen, nur lokal auf diesem Gerät. Neuen Betrag eintragen, etwa nach dem Aufladen, und die Rechnung beginnt von vorn. Ab 90 % Verbrauch erscheint im Chat einmalig ein Hinweis.</p>
@@ -298,7 +299,7 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><span class="lbl">Erscheinungsbild</span><div class="seg" id="s-theme"><button data-v="system">Automatisch</button><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></div></div>
       </div>
       <p class="group-caption">Alle Chats, Dokumente und der API-Key liegen ausschließlich auf diesem Gerät. Es gibt keinen Server dazwischen.</p>
-      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.3</p>
+      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.4</p>
     </div>
   </section>
 
@@ -657,9 +658,12 @@ function msgEl(m){
   const time = document.createElement('span'); time.className = 't'; time.textContent = timeLabel(m.ts || current.updatedAt);
   b.appendChild(body); b.appendChild(time); t.appendChild(b);
   if(m.cost && settings.showCost){
-    const c = document.createElement('div'); c.className = 'cost';
-    const gespart = m.cost.r > 0 ? ' · '+fmtTok(m.cost.r)+' aus Speicher' : (m.cost.w > 0 ? ' · '+fmtTok(m.cost.w)+' neu gespeichert' : '');
-    c.textContent = fmtUsd(m.cost.c)+gespart+' · '+fmtTok(m.cost.o)+' Antwort';
+    const k = m.cost, teile = [fmtUsd(k.c)];
+    if(k.r > 0) teile.push(fmtTok(k.r)+' aus Speicher');
+    if(k.w > 0) teile.push(fmtTok(k.w)+' neu gespeichert'+(k.w1h > 0 ? ' (1 Std, doppelter Preis)' : ''));
+    if(k.i > 0) teile.push(fmtTok(k.i)+' ohne Speicher');
+    teile.push(fmtTok(k.o)+' Antwort');
+    const c = document.createElement('div'); c.className = 'cost'; c.textContent = teile.join(' · ');
     t.appendChild(c);
   }
   return t;
@@ -726,7 +730,9 @@ async function runAssistant(){
   // Kosten dieser Anfrage aus den gemeldeten Tokenzahlen aufsummieren (nur lokal, das Modell sieht davon nichts).
   let lastCost = null;
   if(usage.input_tokens || usage.output_tokens){
-    lastCost = {c:requestCost(usedModel, usage), i:usage.input_tokens||0, w:usage.cache_creation_input_tokens||0, r:usage.cache_read_input_tokens||0, o:usage.output_tokens||0};
+    const ccu = usage.cache_creation || {};
+    lastCost = {c:requestCost(usedModel, usage), i:usage.input_tokens||0, w:usage.cache_creation_input_tokens||0, r:usage.cache_read_input_tokens||0, o:usage.output_tokens||0,
+      w1h: ccu.ephemeral_1h_input_tokens || 0, ttl: settings.cacheTtl, m: usedModel};
     chat.cacheHit = (usage.cache_read_input_tokens || 0) > 0;
     settings.spent = (settings.spent || 0) + lastCost.c;
     saveSettings(); updateBanner();
@@ -860,6 +866,29 @@ function updateBanner(){
   if(show){ const pct = Math.min(999, Math.round(spent / budget * 100)); $('#banner-text').textContent = 'Erinnerung: '+pct+' % deines Guthabens sind verbraucht, noch etwa '+fmtUsd(Math.max(0, budget - spent))+' übrig.'; }
   b.hidden = !show;
 }
+// Aus den letzten Antworten ablesen, ob der Zwischenspeicher ueberhaupt greift.
+function cacheBefund(){
+  const alle = [];
+  for(const c of chats) for(const m of (c.messages || [])) if(m.cost) alle.push(m.cost);
+  alle.sort((a,b) => 0);
+  const letzte = alle.slice(-20);
+  if(letzte.length < 2) return null;
+  const treffer = letzte.filter(k => k.r > 0).length;
+  const schreib1h = letzte.filter(k => k.w > 0 && (k.w1h > 0 || k.ttl === '1h')).length;
+  const summe = letzte.reduce((n,k) => n + k.c, 0);
+  return {n:letzte.length, treffer, schreib1h, mittel: summe / letzte.length};
+}
+function renderCacheHinweis(){
+  const el = $('#s-cache-hinweis'); if(!el) return;
+  const b = cacheBefund();
+  if(!b){ el.textContent = ''; return; }
+  const quote = Math.round(b.treffer / b.n * 100);
+  let t = 'Letzte '+b.n+' Antworten: bei '+b.treffer+' hat der Speicher gegriffen ('+quote+' %), Schnitt '+fmtUsd(b.mittel)+' je Antwort.';
+  if(b.treffer === 0 && b.schreib1h > 0) t += ' Der Speicher wurde jedes Mal neu angelegt, ohne je gelesen zu werden. Auf „Automatisch“ legt die App ihn nur an, wenn das Gespräch gerade läuft, und spart dir den Aufschlag.';
+  else if(b.treffer === 0) t += ' Der Speicher greift nie. Auf „Automatisch“ zahlst du dafür auch keinen Aufschlag mehr; mehrere Nachrichten kurz hintereinander würden ihn nutzen.';
+  else if(quote < 40 && b.schreib1h > 0) t += ' Selten genutzt. „Automatisch“ ist hier die richtige Wahl.';
+  el.textContent = t;
+}
 function syncSpentUI(){
   const budget = settings.budget || 0, spent = settings.spent || 0;
   const el = $('#s-spent'), sub = $('#s-spent-sub'), meter = $('#s-meter');
@@ -888,6 +917,7 @@ function syncSettingsUI(){
   $('#s-effort').querySelectorAll('button').forEach(b => { const tooHigh = off && EFFORTS.indexOf(b.dataset.v) > EFFORTS.indexOf('high'); b.disabled = tooHigh; b.style.opacity = tooHigh ? '.35' : ''; });
   for(const [sel,key] of [['#s-thinking','thinking'],['#s-effort','effort'],['#s-theme','theme']]) $(sel).querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===settings[key]));
   $('#s-cache').querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===settings.cacheTtl));
+  renderCacheHinweis();
   $('#s-showcost').querySelectorAll('button').forEach(b=>b.classList.toggle('on', (b.dataset.v==='1')===!!settings.showCost));
 }
 
