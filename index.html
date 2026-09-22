@@ -299,7 +299,7 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><span class="lbl">Erscheinungsbild</span><div class="seg" id="s-theme"><button data-v="system">Automatisch</button><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></div></div>
       </div>
       <p class="group-caption">Alle Chats, Dokumente und der API-Key liegen ausschließlich auf diesem Gerät. Es gibt keinen Server dazwischen.</p>
-      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.5</p>
+      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.6</p>
     </div>
   </section>
 
@@ -459,6 +459,27 @@ function renderMarkdown(src){
 
 /* ---------- API ---------- */
 // Modell, Nachdenken und Aufwand: pro Chat einstellbar, sonst die allgemeine Vorgabe.
+// Wie weit liegen die Nachrichten in diesem Chat typisch auseinander?
+// Daraus folgt, ob Speichern lohnt und mit welcher Dauer.
+function abstandMedian(chat){
+  const ts = (chat.messages || []).filter(m => m.role === 'user' && m.ts).map(m => m.ts).sort((a,b) => a-b);
+  if(ts.length < 3) return null;
+  const l = []; for(let i = 1; i < ts.length; i++) l.push(ts[i] - ts[i-1]);
+  l.sort((a,b) => a-b);
+  return l[Math.floor(l.length/2)];
+}
+// Gibt die cache_control-Angabe zurueck oder null.
+function cacheStrategie(chat){
+  if(settings.cacheTtl === 'off') return null;
+  if(settings.cacheTtl === '5m') return {type:'ephemeral'};
+  // Automatik
+  const letzteAntwort = (chat.messages || []).filter(m => m.role === 'assistant').reduce((t,m) => Math.max(t, m.ts || 0), 0);
+  const seit = letzteAntwort ? Date.now() - letzteAntwort : Infinity;
+  if(seit < 4*60*1000) return {type:'ephemeral'};            // Gespraech laeuft, 5 Minuten reichen
+  const med = abstandMedian(chat);
+  if(med !== null && med < 50*60*1000) return {type:'ephemeral', ttl:'1h'};  // Sitzungsschreiber
+  return null;                                                // weite Abstaende: Aufschlag waere verschenkt
+}
 function chatModel(chat){ return MODELS.find(x=>x.id===(chat.model || settings.model)) || MODELS[0]; }
 function chatThinking(chat){ return chat.thinking || settings.thinking; }
 function chatEffort(chat){ return EFFORTS.includes(chat.effort) ? chat.effort : settings.effort; }
@@ -485,16 +506,8 @@ function buildRequest(chat){
   if(chat.doc && chat.doc.text){
     system.push({type:'text', text: 'Das folgende Kontextdokument („'+chat.doc.name+'“) steht dir in diesem Chat dauerhaft zur Verfügung. Beziehe dich darauf, wenn es für die Frage relevant ist.\n\n<dokument name="'+chat.doc.name.replace(/"/g,'')+'">\n'+chat.doc.text+'\n</dokument>'});
   }
-  // Speichern lohnt nur, wenn bald wieder gelesen wird. Sonst ist der Aufschlag von 25 % verschenkt.
-  let cc = null;
-  if(settings.cacheTtl === '5m') cc = {type:'ephemeral'};
-  else if(settings.cacheTtl === 'auto'){
-    // Nur die letzte ANTWORT zaehlt. Die eben getippte Nutzernachricht steht schon im Verlauf
-    // und wuerde den Test immer erfuellen; dann waere die Automatik wirkungslos.
-    const letzteAntwort = (chat.messages || []).filter(m => m.role === 'assistant').reduce((t,m) => Math.max(t, m.ts || 0), 0);
-    const frisch = letzteAntwort && (Date.now() - letzteAntwort) < 4*60*1000;   // Gespraech laeuft gerade
-    if(frisch) cc = {type:'ephemeral'};
-  }
+  // Speichern lohnt nur, wenn bald wieder gelesen wird. Sonst ist der Aufschlag verschenkt.
+  const cc = cacheStrategie(chat);
   if(cc) system[system.length-1].cache_control = cc;
 
   // Verlauf mit Zeitstempeln: leere Nachrichten überspringen, gleiche Rollen hintereinander zusammenfassen
@@ -794,6 +807,17 @@ function openChatSettings(isNew){
 }
 // Grobe Schaetzung: im Deutschen etwa drei Zeichen je Token. Genau genug, um zu sehen, wo das Geld liegt.
 const tokEst = t => Math.round((t || '').length / (settings.zpt || 2.6));
+function strategieZeile(c){
+  const med = abstandMedian(c), cc = cacheStrategie(c);
+  const min = med === null ? null : Math.round(med/60000);
+  let was = cc === null ? 'kein Speicher' : (cc.ttl === '1h' ? 'Speicher fuer eine Stunde' : 'Speicher fuer fuenf Minuten');
+  let warum;
+  if(settings.cacheTtl !== 'auto') warum = 'von dir fest eingestellt';
+  else if(min === null) warum = 'noch zu wenige Nachrichten, um die Abstaende zu kennen';
+  else if(min < 50) warum = 'deine Nachrichten kommen typisch '+min+' Minuten auseinander, da lohnt die Stunde';
+  else warum = 'deine Nachrichten kommen typisch '+min+' Minuten auseinander, da waere der Aufschlag verschenkt';
+  return '<div class="muted" style="font-size:13px;margin-top:8px;padding-top:6px;border-top:1px solid var(--ln)">Gewaehlt: <b style="color:var(--tx)">'+was+'</b><br>'+warum+'</div>';
+}
 function renderSize(){
   const c = current; if(!c) return;
   const tAnw = tokEst(c.instruction), tDoc = tokEst(c.doc && c.doc.text);
@@ -808,6 +832,7 @@ function renderSize(){
     zeile('Anweisung', tAnw) + zeile('Dokument', tDoc) +
     zeile('Übernommener Verlauf', tVor) + zeile('Verlauf in diesem Chat', tVerl) +
     '<div style="display:flex;justify-content:space-between;border-top:1px solid var(--ln);margin-top:6px;padding-top:6px;font-weight:600"><span>Je Nachricht</span><span style="font-variant-numeric:tabular-nums">'+fmtTok(ges)+' Tokens</span></div>' +
+    strategieZeile(c) +
     '<div class="muted" style="font-size:13px;margin-top:6px">Eingabe je Nachricht: etwa '+fmtUsd(kalt)+' kalt'+(schreibt ? ' mit Aufschlag' : '')+', '+fmtUsd(warm)+' aus dem Speicher. Antwort und Denken kommen dazu.'+
       (settings.zpt ? ' Umrechnung an deinen echten Zahlen kalibriert.' : ' Noch nicht kalibriert, schick eine Nachricht.')+'</div>';
 }
