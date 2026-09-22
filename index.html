@@ -302,7 +302,7 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><span class="lbl">Erscheinungsbild</span><div class="seg" id="s-theme"><button data-v="system">Automatisch</button><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></div></div>
       </div>
       <p class="group-caption">Alle Chats, Dokumente und der API-Key liegen ausschließlich auf diesem Gerät. Es gibt keinen Server dazwischen.</p>
-      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-23.2</p>
+      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-23.3</p>
     </div>
   </section>
 
@@ -316,15 +316,16 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
 const $ = s => document.querySelector(s);
 const API = 'https://api.anthropic.com/v1/messages';
 const MODELS = [
-  {id:'claude-opus-5',   label:'Claude Opus 5',    hint:'Stärkstes Modell. Standard.',            effort:true,  fallbacks:true,  anchor:true},
+  {id:'claude-opus-5-5', label:'Claude Opus 5.5',  hint:'Neuestes Opus, 20 % günstiger als Opus 5, Speicher-Lesen 60 % günstiger. Nachdenken lässt sich hier nicht abschalten.', effort:true, fallbacks:true, anchor:true, thinkingAlwaysOn:true},
+  {id:'claude-opus-5',   label:'Claude Opus 5',    hint:'Vorgänger von Opus 5.5.',                 effort:true,  fallbacks:true,  anchor:true},
   {id:'claude-opus-4-8', label:'Claude Opus 4.8',  hint:'Vorgänger von Opus 5.',                  effort:true,  fallbacks:false, anchor:true},
   {id:'claude-sonnet-5', label:'Claude Sonnet 5',  hint:'Schnell und deutlich günstiger.',        effort:true,  fallbacks:false, anchor:false},
   {id:'claude-haiku-4-5',label:'Claude Haiku 4.5', hint:'Sehr schnell, am günstigsten.',          effort:false, fallbacks:false, anchor:false},
 ];
-const DEFAULTS = {apiKey:'', model:'claude-opus-5', thinking:'on', effort:'medium', theme:'system', budget:0, spent:0, spentSince:0, bannerDismissed:false, cacheTtl:'auto', showCost:true, zpt:0};
+const DEFAULTS = {apiKey:'', model:'claude-opus-5-5', thinking:'on', effort:'medium', theme:'system', budget:0, spent:0, spentSince:0, bannerDismissed:false, cacheTtl:'auto', showCost:true, zpt:0};
 const EFFORTS = ['low','medium','high','xhigh','max'];
 // Offizielle Preise in US-Dollar je Million Tokens (Eingabe / Ausgabe). Cache: Lesen 0,1×, Schreiben 1,25× der Eingabe.
-const PRICES = {'claude-opus-5':{in:5, out:25}, 'claude-opus-4-8':{in:5, out:25}, 'claude-sonnet-5':{in:2, out:10}, 'claude-haiku-4-5':{in:1, out:5}};
+const PRICES = {'claude-opus-5-5':{in:4, out:20, read:0.05}, 'claude-opus-5':{in:5, out:25}, 'claude-opus-4-8':{in:5, out:25}, 'claude-sonnet-5':{in:2, out:10}, 'claude-haiku-4-5':{in:1, out:5}};
 const WARN_AT = 0.9;
 function requestCost(model, u, chat){
   const p = PRICES[model] || PRICES[chat ? chatModel(chat).id : settings.model] || PRICES[settings.model] || PRICES['claude-opus-5'];
@@ -333,7 +334,8 @@ function requestCost(model, u, chat){
   const cc = u.cache_creation || {};
   const w1h = cc.ephemeral_1h_input_tokens || 0;
   const w5m = cc.ephemeral_5m_input_tokens != null ? cc.ephemeral_5m_input_tokens : Math.max(0, (u.cache_creation_input_tokens||0) - w1h);
-  return (inp*p.in + w5m*p.in*1.25 + w1h*p.in*2 + cr*p.in*0.1 + out*p.out) / 1e6;
+  const readF = p.read || 0.1;   // Opus 5.5 liest zu 0,05x statt 0,1x
+  return (inp*p.in + w5m*p.in*1.25 + w1h*p.in*2 + cr*p.in*readF + out*p.out) / 1e6;
 }
 const fmtTok = n => n >= 1000 ? (n/1000).toFixed(n >= 10000 ? 0 : 1).replace('.', ',')+'k' : String(n);
 const fmtUsd = v => v.toLocaleString('de-DE', {style:'currency', currency:'USD', minimumFractionDigits:2, maximumFractionDigits:2});
@@ -504,7 +506,7 @@ function grundsaetzeBlock(docText){
 
 function buildRequest(chat){
   const m = chatModel(chat);
-  const thinkingOff = m.effort && chatThinking(chat) === 'off';
+  const thinkingOff = m.effort && !m.thinkingAlwaysOn && chatThinking(chat) === 'off';
   // Ohne Denkphase empfiehlt Anthropic diesen Zusatz, damit keine internen Markierungen in die Antwort rutschen.
   const system = [{type:'text', text: TIME_NOTE + (thinkingOff ? ' Gib keine internen oder System-XML-Tags in deiner Antwort aus.' : '')}];
   if(chat.instruction && chat.instruction.trim()) system.push({type:'text', text: chat.instruction.trim()});
@@ -842,7 +844,7 @@ function renderSize(){
   const ges = tAnw + tDoc + tVor + tVerl;
   const m = chatModel(c), p = PRICES[m.id] || PRICES['claude-opus-5'];
   const schreibt = settings.cacheTtl !== 'off';
-  const kalt = ges * p.in * (schreibt ? 1.25 : 1) / 1e6, warm = ges * p.in * 0.1 / 1e6;
+  const kalt = ges * p.in * (schreibt ? 1.25 : 1) / 1e6, warm = ges * p.in * (p.read || 0.1) / 1e6;
   const zeile = (name, t) => t ? '<div style="display:flex;justify-content:space-between"><span>'+name+'</span><span style="font-variant-numeric:tabular-nums">'+fmtTok(t)+'</span></div>' : '';
   $('#cs-size').innerHTML =
     zeile('Anweisung', tAnw) + zeile('Dokument', tDoc) +
@@ -979,6 +981,7 @@ function syncSettingsUI(){
   syncSpentUI();
   const m = MODELS.find(x=>x.id===settings.model); $('#s-model-hint').textContent = m ? m.hint : '';
   $('#f-thinking').hidden = !(m && m.effort); $('#f-effort').hidden = !(m && m.effort);
+  $('#s-thinking').querySelectorAll('button').forEach(b => { const gesperrt = !!(m && m.thinkingAlwaysOn) && b.dataset.v === 'off'; b.disabled = gesperrt; b.style.opacity = gesperrt ? '.35' : ''; });
   // Ohne Nachdenken sind die zwei obersten Aufwandsstufen nicht erlaubt: ausgrauen und ggf. auf „Viel“ zurücknehmen.
   const off = settings.thinking === 'off';
   if(off && EFFORTS.indexOf(settings.effort) > EFFORTS.indexOf('high')){ settings.effort = 'high'; localStorage.setItem('kichat.settings', JSON.stringify(settings)); }
