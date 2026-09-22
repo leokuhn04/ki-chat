@@ -299,7 +299,7 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><span class="lbl">Erscheinungsbild</span><div class="seg" id="s-theme"><button data-v="system">Automatisch</button><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></div></div>
       </div>
       <p class="group-caption">Alle Chats, Dokumente und der API-Key liegen ausschließlich auf diesem Gerät. Es gibt keinen Server dazwischen.</p>
-      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.6</p>
+      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.7</p>
     </div>
   </section>
 
@@ -728,8 +728,9 @@ async function runAssistant(){
 
   let text = '', stop = null, error = null;
   const usage = {}; let usedModel = chatModel(chat).id;
+  let req = null;
   try{
-    const req = buildRequest(chat);
+    req = buildRequest(chat);
     for await (const ev of streamMessage(req, controller.signal)){
       if(ev.type==='message_start' && ev.message){ Object.assign(usage, ev.message.usage || {}); if(ev.message.model) usedModel = ev.message.model; }
       else if(ev.type==='content_block_start' && ev.content_block && ev.content_block.type==='thinking' && !text){ bubble.textContent = 'Denkt nach …'; }
@@ -746,16 +747,22 @@ async function runAssistant(){
   streaming = null;
 
   // Kosten dieser Anfrage aus den gemeldeten Tokenzahlen aufsummieren (nur lokal, das Modell sieht davon nichts).
+  // Alles ab hier in eine Sicherung gepackt: die Antwort muss auch dann ankommen,
+  // wenn an der Kostenrechnung etwas schiefgeht.
+  let lastCost = null;
+  try{
   // Abbruch: message_delta kommt nie, also die gestreamten Zeichen als Ausgabe ansetzen.
   if(!usage.output_tokens && usage._teil) usage.output_tokens = usage._teil;
-  let lastCost = null;
   if(usage.input_tokens || usage.output_tokens){
-    // Umrechnung Zeichen je Token aus den echten Zahlen lernen
-    const promptTok = (usage.input_tokens||0) + (usage.cache_creation_input_tokens||0) + (usage.cache_read_input_tokens||0);
-    if(promptTok > 5000 && req && req.zeichen){
-      const neu = req.zeichen / promptTok;
-      settings.zpt = settings.zpt ? settings.zpt*0.7 + neu*0.3 : neu;
-    }
+    // Umrechnung Zeichen je Token aus den echten Zahlen lernen. Fehler hier duerfen
+    // den Abschluss nicht aufhalten, sonst bleibt die Antwort ungespeichert stehen.
+    try{
+      const promptTok = (usage.input_tokens||0) + (usage.cache_creation_input_tokens||0) + (usage.cache_read_input_tokens||0);
+      if(promptTok > 5000 && req && req.zeichen){
+        const neu = req.zeichen / promptTok;
+        settings.zpt = settings.zpt ? settings.zpt*0.7 + neu*0.3 : neu;
+      }
+    }catch(e){}
     const ccu = usage.cache_creation || {};
     lastCost = {c:requestCost(usedModel, usage, chat), i:usage.input_tokens||0, w:usage.cache_creation_input_tokens||0, r:usage.cache_read_input_tokens||0, o:usage.output_tokens||0,
       w1h: ccu.ephemeral_1h_input_tokens || 0, ttl: settings.cacheTtl, m: usedModel};
@@ -763,6 +770,7 @@ async function runAssistant(){
     settings.spent = (settings.spent || 0) + lastCost.c;
     saveSettings(); updateBanner();
   }
+  }catch(e){ console.warn('Kostenrechnung uebersprungen', e); }
 
   // Falls das Modell einen Zeitstempel nachgeahmt hat: am Anfang entfernen.
   const echo = text.match(/^\s*\[([^\]\n]{4,80})\]\s*/);
