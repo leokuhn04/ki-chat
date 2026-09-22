@@ -255,6 +255,13 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><span class="lbl">Größe dieses Chats</span><div id="cs-size" style="font-size:15px;line-height:1.5"></div></div>
       </div>
       <p class="group-caption" id="cs-size-caption">Geschätzt aus der Zeichenzahl. Bei jeder Nachricht geht alles davon mit. Der Verlauf wächst mit jedem Austausch, das Dokument bleibt gleich groß.</p>
+      <div class="group" id="cs-mem-group" hidden>
+        <div class="field"><span class="lbl">Gesprächsgedächtnis</span><div id="cs-mem-info" style="font-size:15px;line-height:1.5"></div></div>
+        <button class="btn" id="btn-mem-toggle">Lesen / korrigieren</button>
+        <div class="field" id="mem-edit" hidden><textarea id="cs-mem"></textarea></div>
+        <button class="btn danger" id="btn-mem-reset">Gedächtnis verwerfen</button>
+      </div>
+      <p class="group-caption" id="cs-mem-caption" hidden>Das Modell sieht die ältere Zeit dieses Chats nur noch so, wie sie hier steht, dazu die letzten zwei Tage wörtlich. Fehlt etwas oder stimmt etwas nicht, kannst du es direkt korrigieren. Verwerfen holt den ganzen Verlauf wörtlich zurück, das Gedächtnis wird dann nach der nächsten Antwort neu geschrieben.</p>
       <div class="group" id="cs-continue-group">
         <button class="btn" id="btn-fresh">Neu beginnen mit diesem Dokument …</button>
         <button class="btn" id="btn-continue">In neuem Chat fortsetzen …</button>
@@ -296,13 +303,17 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><span class="lbl">Kosten je Antwort anzeigen</span><div class="seg" id="s-showcost"><button data-v="1">An</button><button data-v="0">Aus</button></div></div>
         <div class="field"><span class="lbl">Befund</span><div id="s-cache-hinweis" style="font-size:14px;line-height:1.5"></div></div>
       </div>
-      <p class="group-caption">Anweisung und Dokument gehen bei jeder Nachricht mit. Die API kann sie fünf Minuten zwischenspeichern, dann kostet die Wiederholung nur ein Zehntel. Das Anlegen kostet aber 25 Prozent Aufschlag, der verfällt, wenn du erst Stunden später weiterschreibst. Automatisch heißt: nur speichern, solange das Gespräch gerade läuft.</p>
+      <p class="group-caption">Anweisung und Dokument gehen bei jeder Nachricht mit. Die API kann sie zwischenspeichern, dann kostet die Wiederholung nur einen Bruchteil. Das Anlegen kostet einen Aufschlag: 25 Prozent für fünf Minuten, das Doppelte für eine Stunde. Jede Nachricht, die den Speicher liest, verlängert ihn wieder. Automatisch heißt: speichern, sobald ein Gespräch läuft, und den Speicher halten, solange du innerhalb einer Stunde weiterschreibst. Nach einer längeren Pause kein Aufschlag.</p>
+      <div class="group">
+        <div class="field"><span class="lbl">Älteren Verlauf zusammenfassen</span><div class="seg" id="s-mem"><button data-v="1">An</button><button data-v="0">Aus</button></div></div>
+      </div>
+      <p class="group-caption">Was älter als zwei Tage ist, fasst die App zu einem Gesprächsgedächtnis zusammen, sobald genug zusammenkommt. Das Modell sieht dann das Gedächtnis und die letzten zwei Tage wörtlich. Jede Nachricht nach einer Pause wird dadurch günstiger, und der Preis wächst nicht mehr mit jedem Austausch. Die Zusammenfassung selbst kostet einmalig etwas und wird erst übernommen, wenn gerade kein Speicher läuft. Lesen und korrigieren kannst du sie in den Chat-Einstellungen.</p>
       <p class="group-caption">Trag den Betrag ein, der in der Anthropic-Konsole als Guthaben steht. Ab diesem Moment zieht die App jede Antwort davon ab, gerechnet aus den Tokenzahlen mit den offiziellen Preisen, nur lokal auf diesem Gerät. Neuen Betrag eintragen, etwa nach dem Aufladen, und die Rechnung beginnt von vorn. Ab 90 % Verbrauch erscheint im Chat einmalig ein Hinweis.</p>
       <div class="group">
         <div class="field"><span class="lbl">Erscheinungsbild</span><div class="seg" id="s-theme"><button data-v="system">Automatisch</button><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></div></div>
       </div>
       <p class="group-caption">Alle Chats, Dokumente und der API-Key liegen ausschließlich auf diesem Gerät. Es gibt keinen Server dazwischen.</p>
-      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-23.3</p>
+      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-23.4</p>
     </div>
   </section>
 
@@ -322,7 +333,7 @@ const MODELS = [
   {id:'claude-sonnet-5', label:'Claude Sonnet 5',  hint:'Schnell und deutlich günstiger.',        effort:true,  fallbacks:false, anchor:false},
   {id:'claude-haiku-4-5',label:'Claude Haiku 4.5', hint:'Sehr schnell, am günstigsten.',          effort:false, fallbacks:false, anchor:false},
 ];
-const DEFAULTS = {apiKey:'', model:'claude-opus-5-5', thinking:'on', effort:'medium', theme:'system', budget:0, spent:0, spentSince:0, bannerDismissed:false, cacheTtl:'auto', showCost:true, zpt:0};
+const DEFAULTS = {apiKey:'', model:'claude-opus-5-5', thinking:'on', effort:'medium', theme:'system', budget:0, spent:0, spentSince:0, bannerDismissed:false, cacheTtl:'auto', showCost:true, zpt:0, gedaechtnis:true};
 const EFFORTS = ['low','medium','high','xhigh','max'];
 // Offizielle Preise in US-Dollar je Million Tokens (Eingabe / Ausgabe). Cache: Lesen 0,1×, Schreiben 1,25× der Eingabe.
 const PRICES = {'claude-opus-5-5':{in:4, out:20, read:0.05}, 'claude-opus-5':{in:5, out:25}, 'claude-opus-4-8':{in:5, out:25}, 'claude-sonnet-5':{in:2, out:10}, 'claude-haiku-4-5':{in:1, out:5}};
@@ -473,18 +484,49 @@ function abstandMedian(chat){
   l.sort((a,b) => a-b);
   return l[Math.floor(l.length/2)];
 }
+// Der feste Vorbau: Zeithinweis, Anweisung, Dokument. In jeder Anfrage dieses Chats identisch,
+// damit die API ihn aus dem Speicher lesen kann.
+function vorbau(chat){
+  const m = chatModel(chat);
+  const thinkingOff = m.effort && !m.thinkingAlwaysOn && chatThinking(chat) === 'off';
+  // Ohne Denkphase empfiehlt Anthropic diesen Zusatz, damit keine internen Markierungen in die Antwort rutschen.
+  const system = [{type:'text', text: TIME_NOTE + (thinkingOff ? ' Gib keine internen oder System-XML-Tags in deiner Antwort aus.' : '')}];
+  if(chat.instruction && chat.instruction.trim()) system.push({type:'text', text: chat.instruction.trim()});
+  if(chat.doc && chat.doc.text){
+    system.push({type:'text', text: 'Das folgende Kontextdokument („'+chat.doc.name+'“) steht dir in diesem Chat dauerhaft zur Verfügung. Beziehe dich darauf, wenn es für die Frage relevant ist.\n\n<dokument name="'+chat.doc.name.replace(/"/g,'')+'">\n'+chat.doc.text+'\n</dokument>'});
+  }
+  return {m, thinkingOff, system, fp: m.id + '.' + hashStr(system.map(b => b.text).join('\n\u0000'))};
+}
+function hashStr(s){ let h = 5381; for(let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+// Lebt der Speicher der API für diesen Vorbau noch? Aendern sich Modell, Anweisung oder Dokument,
+// passt der Fingerabdruck nicht mehr und der alte Speicher zaehlt nicht.
+function speicherLebt(chat){
+  const s = chat.speicher;
+  if(!s || Date.now() > s.bis - 2*60*1000) return null;   // zwei Minuten Luft für Uhr und Übertragung
+  return s.fp === vorbau(chat).fp ? s : null;
+}
+function merkeSpeicher(chat, cc, fp, gesendet, u){
+  if(!cc || !u || ((u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0)) === 0) return;
+  const ttl = cc.ttl === '1h' ? '1h' : '5m';
+  chat.speicher = {ttl, bis: gesendet + (ttl === '1h' ? 60 : 5)*60*1000, fp};
+}
 // Gibt die cache_control-Angabe zurueck oder null.
 function cacheStrategie(chat){
   if(settings.cacheTtl === 'off') return null;
   if(settings.cacheTtl === '5m') return {type:'ephemeral'};
   // Automatik. Grundsatz: nie auf eine Sitzung wetten, die noch nicht begonnen hat.
   // Anlegen kostet das 1,25- bis 2-fache einer Nachricht; verfaellt es, ist das Geld weg.
+  // Lebt der Speicher aber schon, ist Weiterfuehren fast umsonst: gelesen wird zum Bruchteil,
+  // doppelt kostet nur der neue Teil, und jede Nachricht verlaengert ihn wieder um die volle Zeit.
+  const lebt = speicherLebt(chat);
+  if(lebt && lebt.ttl === '1h') return {type:'ephemeral', ttl:'1h'};
   const antworten = (chat.messages || []).filter(m => m.role === 'assistant' && m.ts).map(m => m.ts).sort((a,b) => b-a);
   const jetzt = Date.now();
   const seitLetzter = antworten.length ? jetzt - antworten[0] : Infinity;
   const seitVorletzter = antworten.length > 1 ? jetzt - antworten[1] : Infinity;
   if(seitLetzter < 4*60*1000) return {type:'ephemeral'};                       // Gespraech laeuft, 5 Minuten reichen
   if(seitLetzter < 55*60*1000 && seitVorletzter < 90*60*1000) return {type:'ephemeral', ttl:'1h'};  // nachweislich mitten in einer Sitzung
+  if(lebt) return {type:'ephemeral'};                                           // 5-Minuten-Speicher lebt noch: lesen statt verfallen lassen
   return null;                                                                  // erste Nachricht nach einer Pause: kein Aufschlag
 }
 function chatModel(chat){ return MODELS.find(x=>x.id===(chat.model || settings.model)) || MODELS[0]; }
@@ -504,22 +546,30 @@ function grundsaetzeBlock(docText){
   return m ? m[1].trim() : '';
 }
 
+// Denkaufwand und Denkphase; deckel begrenzt den Aufwand (für Hilfsanfragen der App).
+function denkParameter(chat, m, thinkingOff, deckel){
+  if(!m.effort) return null;
+  // Ohne Denkphase erlaubt die API höchstens Aufwand „Viel“.
+  let effort = chatEffort(chat);
+  if(thinkingOff && EFFORTS.indexOf(effort) > EFFORTS.indexOf('high')) effort = 'high';
+  if(deckel && EFFORTS.indexOf(effort) > EFFORTS.indexOf(deckel)) effort = deckel;
+  // Ausdrücklich setzen: Opus 5 denkt ohne Angabe von selbst, Opus 4.8 nicht.
+  return {thinking: thinkingOff ? {type:'disabled'} : {type:'adaptive'}, output_config: {effort}};
+}
+
 function buildRequest(chat){
-  const m = chatModel(chat);
-  const thinkingOff = m.effort && !m.thinkingAlwaysOn && chatThinking(chat) === 'off';
-  // Ohne Denkphase empfiehlt Anthropic diesen Zusatz, damit keine internen Markierungen in die Antwort rutschen.
-  const system = [{type:'text', text: TIME_NOTE + (thinkingOff ? ' Gib keine internen oder System-XML-Tags in deiner Antwort aus.' : '')}];
-  if(chat.instruction && chat.instruction.trim()) system.push({type:'text', text: chat.instruction.trim()});
-  if(chat.doc && chat.doc.text){
-    system.push({type:'text', text: 'Das folgende Kontextdokument („'+chat.doc.name+'“) steht dir in diesem Chat dauerhaft zur Verfügung. Beziehe dich darauf, wenn es für die Frage relevant ist.\n\n<dokument name="'+chat.doc.name.replace(/"/g,'')+'">\n'+chat.doc.text+'\n</dokument>'});
-  }
+  const {m, thinkingOff, system, fp} = vorbau(chat);
   // Speichern lohnt nur, wenn bald wieder gelesen wird. Sonst ist der Aufschlag verschenkt.
+  // Ein Speicherpunkt direkt hinter dem Dokument: der bleibt lesbar, auch wenn sich Gedächtnis oder Verlauf ändern.
   const cc = cacheStrategie(chat);
   if(cc) system[system.length-1].cache_control = cc;
+  const g = settings.gedaechtnis && chat.gedaechtnis && chat.gedaechtnis.text ? chat.gedaechtnis : null;
+  if(g){ system.push({type:'text', text: gedaechtnisBlock(g)}); if(cc) system[system.length-1].cache_control = cc; }
 
-  // Verlauf mit Zeitstempeln: leere Nachrichten überspringen, gleiche Rollen hintereinander zusammenfassen
+  // Verlauf mit Zeitstempeln: leere Nachrichten überspringen, gleiche Rollen hintereinander zusammenfassen.
+  // Was im Gedächtnis steht, geht nicht mehr wörtlich mit.
   const msgs = [];
-  for(const x of (chat.prelude || []).concat(chat.messages)){
+  for(const x of verlauf(chat).slice(g ? g.n : 0)){
     if(!x.content || !x.content.trim()) continue;
     const text = '['+stamp(x.ts || chat.createdAt)+'] '+x.content;
     const last = msgs[msgs.length-1];
@@ -532,15 +582,8 @@ function buildRequest(chat){
 
   // Optionale Extras: Denkaufwand und serverseitiger Fallback bei Ablehnungen.
   const body = {...base}; const extHeaders = {...headers}; let hasExtras = false;
-  if(m.effort){
-    // Ohne Denkphase erlaubt die API höchstens Aufwand „Viel“.
-    const wanted = chatEffort(chat);
-    const effort = thinkingOff && EFFORTS.indexOf(wanted) > EFFORTS.indexOf('high') ? 'high' : wanted;
-    // Ausdrücklich setzen: Opus 5 denkt ohne Angabe von selbst, Opus 4.8 nicht.
-    body.thinking = thinkingOff ? {type:'disabled'} : {type:'adaptive'};
-    body.output_config = {effort};
-    hasExtras = true;
-  }
+  const denk = denkParameter(chat, m, thinkingOff);
+  if(denk){ Object.assign(body, denk); hasExtras = true; }
   if(m.fallbacks){ body.fallbacks = 'default'; extHeaders['anthropic-beta'] = 'server-side-fallback-2026-07-01'; hasExtras = true; }
 
   // Anker: der Kern der Anweisung direkt vor der Antwort, als System-Nachricht im Verlauf.
@@ -559,7 +602,92 @@ function buildRequest(chat){
   }
   // Zeichenzahl des tatsaechlich gesendeten Vorbaus, um die Token-Schaetzung zu kalibrieren
   const zeichen = JSON.stringify(body.system).length + JSON.stringify(body.messages).length;
-  return {body, headers:extHeaders, plainBody:base, plainHeaders:headers, hasExtras, zeichen};
+  return {body, headers:extHeaders, plainBody:base, plainHeaders:headers, hasExtras, zeichen, cc, fp};
+}
+
+/* ---------- Gesprächsgedächtnis ---------- */
+// Ältere Teile des Verlaufs werden zu einem Gedächtnis verdichtet. Das spart bei jeder kalten Nachricht
+// den wörtlichen Verlauf, und der Preis wächst nicht mehr endlos mit.
+const G_FRISCH = 48*3600*1000;   // was jünger ist, bleibt wörtlich
+const G_MIN_WOERTLICH = 16;       // mindestens so viele Nachrichten bleiben wörtlich
+const G_AB_TOKENS = 15000;        // erst verdichten, wenn so viel Älteres zusammenkommt; darunter lohnt die Zusammenfassung nicht
+const gLaeuft = new Set();
+const datumLang = ts => new Date(ts).toLocaleDateString('de-DE', {day:'numeric', month:'long', year:'numeric'});
+
+function verlauf(chat){ return (chat.prelude || []).concat(chat.messages || []); }
+function gedaechtnisBlock(g){
+  return 'Gesprächsgedächtnis: So hast du die ältere Zeit dieses Chats zusammengefasst, vom '+datumLang(g.von)+' bis '+datumLang(g.bis)+'. '
+    + 'Die Nachrichten aus dieser Zeit siehst du nicht mehr wörtlich, das hier ist, was davon wichtig ist. Danach folgt der wörtliche Verlauf.\n\n<gedaechtnis>\n'+g.text+'\n</gedaechtnis>';
+}
+// Welcher ältere Abschnitt käme jetzt ins Gedächtnis? null, wenn es sich noch nicht lohnt.
+function gedaechtnisSchnitt(chat){
+  const alle = verlauf(chat);
+  const basis = chat.gedaechtnisNeu || chat.gedaechtnis;
+  const ab = basis ? basis.n : 0;
+  let bis = alle.length - G_MIN_WOERTLICH;
+  const grenze = Date.now() - G_FRISCH;
+  const ersteFrische = alle.findIndex(x => (x.ts || chat.createdAt) >= grenze);
+  if(ersteFrische >= 0) bis = Math.min(bis, ersteFrische);
+  while(bis > ab && alle[bis].role !== 'user') bis--;   // der wörtliche Teil muss mit einer Nutzer-Nachricht beginnen
+  if(bis <= ab) return null;
+  const teil = alle.slice(ab, bis);
+  const tok = teil.reduce((n,x) => n + tokEst(x.content) + 12, 0);
+  return tok >= G_AB_TOKENS ? {bis, teil, letzte: alle[bis-1]} : null;
+}
+// Läuft nach einer Antwort im Hintergrund. Das Ergebnis wartet als gedaechtnisNeu und wird erst
+// übernommen, wenn gerade kein Speicher lebt; sonst würde es eine laufende Speicher-Kette brechen.
+async function gedaechtnisPflegen(chat){
+  if(!settings.gedaechtnis || !settings.apiKey || gLaeuft.has(chat.id)) return;
+  const s = gedaechtnisSchnitt(chat); if(!s) return;
+  gLaeuft.add(chat.id);
+  try{
+    const basis = chat.gedaechtnisNeu || chat.gedaechtnis;
+    const v = vorbau(chat), lebt = speicherLebt(chat);
+    // Lebt der Speicher, liest die Zusammenfassung Anweisung und Dokument fast umsonst mit und kennt so den Hintergrund.
+    // Sonst ohne, denn das Dokument kalt mitzuschicken kostete mehr als die ganze Zusammenfassung.
+    let system;
+    if(lebt){ system = v.system; system[system.length-1].cache_control = lebt.ttl === '1h' ? {type:'ephemeral', ttl:'1h'} : {type:'ephemeral'}; }
+    else system = [{type:'text', text:'Du führst für eine Chat-App das Gesprächsgedächtnis eines längeren, persönlichen Gesprächs, in dem du als Begleiter antwortest.'}];
+    const abschnitt = s.teil.filter(x => x.content && x.content.trim())
+      .map(x => '['+stamp(x.ts || chat.createdAt)+'] '+(x.role === 'user' ? 'NUTZER' : 'DU')+':\n'+x.content.trim()).join('\n\n');
+    const auftrag =
+      'Aufgabe der App, keine Nachricht im Gespräch. Antworte nicht auf den Inhalt, sondern führe das Gesprächsgedächtnis.\n\n'
+      + 'Die App schickt dir den Verlauf dieses Chats künftig nicht mehr vollständig wörtlich. Ältere Abschnitte ersetzt sie durch ein Gesprächsgedächtnis, das du jetzt schreibst. '
+      + 'Später siehst du nur noch dieses Gedächtnis und die Nachrichten der letzten Tage. Was hier fehlt, ist für dich verloren.\n\n'
+      + (basis ? 'Bisheriges Gesprächsgedächtnis, es deckt die Zeit davor ab:\n<gedaechtnis>\n'+basis.text+'\n</gedaechtnis>\n\n' : '')
+      + 'Neuer Abschnitt des Verlaufs, wörtlich:\n<abschnitt>\n'+abschnitt+'\n</abschnitt>\n\n'
+      + (basis ? 'Schreibe das aktualisierte Gesprächsgedächtnis: das bisherige und der neue Abschnitt in einem Text. Das bisherige übernimmst du weitgehend und kürzt es nur, wo es sich wiederholt.\n\n'
+               : 'Schreibe das Gesprächsgedächtnis für diesen Abschnitt.\n\n')
+      + 'Halte fest, unter Datumsüberschriften:\n'
+      + '- was der Nutzer erzählt hat: Ereignisse, Begegnungen, Gedanken, und wie es dem Nutzer dabei ging\n'
+      + '- was du eingeordnet, geraten oder zugesagt hast, und wie der Nutzer darauf reagiert hat\n'
+      + '- Vereinbarungen, Pläne, Termine und offene Fragen\n'
+      + '- Sätze, die dem Nutzer wichtig waren oder an die ihr wieder anknüpft, wörtlich in Anführungszeichen\n'
+      + '- Veränderungen und wiederkehrende Muster über die Zeit\n\n'
+      + (lebt ? 'Was schon im Kontextdokument steht, wiederholst du nicht, außer es hat sich im Gespräch verändert.\n' : '')
+      + 'Schreib knapp und sachlich in Stichpunkten. Lass nichts weg, das für die Begleitung später wichtig sein könnte; kürze Wiederholungen, Floskeln und Ausführlichkeit. '
+      + 'Der neue Abschnitt soll auf etwa ein Fünftel seiner Länge schrumpfen. Gib nur das Gedächtnis aus, ohne Einleitung und ohne Schlusswort.';
+    const body = {model:v.m.id, max_tokens:16000, system, messages:[{role:'user', content:auftrag}]};
+    const denk = denkParameter(chat, v.m, v.thinkingOff, 'medium'); if(denk) Object.assign(body, denk);
+    const headers = {'content-type':'application/json', 'x-api-key':settings.apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true'};
+    const gesendet = Date.now();
+    let res = await fetch(API, {method:'POST', headers, body:JSON.stringify(body)});
+    if(res.status === 400 && denk){ delete body.thinking; delete body.output_config; res = await fetch(API, {method:'POST', headers, body:JSON.stringify(body)}); }
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const j = await res.json();
+    const kosten = requestCost(j.model || v.m.id, j.usage || {}, chat);
+    settings.spent = (settings.spent || 0) + kosten; saveSettings(); updateBanner();
+    const text = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+    if(!text || j.stop_reason !== 'end_turn') throw new Error('keine vollständige Zusammenfassung ('+j.stop_reason+')');
+    // Verlauf inzwischen gelöscht oder ersetzt? Dann passt der Schnitt nicht mehr.
+    if(verlauf(chat)[s.bis-1] !== s.letzte) return;
+    if(lebt) merkeSpeicher(chat, system[system.length-1].cache_control, v.fp, gesendet, j.usage);
+    chat.gedaechtnisNeu = {text, n:s.bis, von: basis ? basis.von : (s.teil[0].ts || chat.createdAt), bis: s.letzte.ts || chat.createdAt,
+      at:Date.now(), kosten:(basis && basis.kosten || 0) + kosten};
+    await DB.put(chat);
+    if(current === chat && $('#view-chat-settings').classList.contains('open')){ renderSize(); renderMem(); }
+  }catch(e){ console.warn('Gedaechtnis uebersprungen', e); }
+  finally{ gLaeuft.delete(chat.id); }
 }
 
 function friendlyError(status, msg){
@@ -657,11 +785,19 @@ function renderMessages(){
     box.appendChild(d);
   }
   let lastDay = null;
-  for(const m of current.messages){
+  // Grenze zum Gesprächsgedächtnis: davor sieht das Modell nur noch die Zusammenfassung.
+  const g = settings.gedaechtnis && current.gedaechtnis;
+  const gAb = g ? g.n - (current.prelude || []).length : -1;
+  current.messages.forEach((m, i) => {
+    if(i === gAb && i > 0){
+      const d = document.createElement('div'); d.className = 'hint';
+      d.innerHTML = 'Bis hier steht der Verlauf zusammengefasst im <b>Gesprächsgedächtnis</b>. Ab hier sieht das Modell ihn wörtlich.';
+      box.appendChild(d); lastDay = null;
+    }
     const k = dayKey(m.ts || current.updatedAt);
     if(k!==lastDay){ box.appendChild(dateChip(m.ts || current.updatedAt)); lastDay = k; }
     box.appendChild(msgEl(m));
-  }
+  });
   if(streaming && streaming.chatId===current.id && streaming.el){
     const k = dayKey(Date.now()); if(k!==lastDay) box.appendChild(dateChip(Date.now()));
     box.appendChild(streaming.el);
@@ -737,9 +873,16 @@ async function runAssistant(){
   const usage = {}; let usedModel = chatModel(chat).id;
   let req = null;
   try{
+    // Wartet ein neues Gedächtnis, wird es jetzt übernommen, aber nur ohne lebenden Speicher.
+    // Dann ist diese Nachricht ohnehin kalt, und der geänderte Vorbau kostet nichts extra.
+    if(chat.gedaechtnisNeu && settings.gedaechtnis && !speicherLebt(chat)){
+      chat.gedaechtnis = chat.gedaechtnisNeu; delete chat.gedaechtnisNeu; DB.put(chat);
+      if(current === chat) renderMessages();
+    }
     req = buildRequest(chat);
+    const gesendet = Date.now();
     for await (const ev of streamMessage(req, controller.signal)){
-      if(ev.type==='message_start' && ev.message){ Object.assign(usage, ev.message.usage || {}); if(ev.message.model) usedModel = ev.message.model; }
+      if(ev.type==='message_start' && ev.message){ Object.assign(usage, ev.message.usage || {}); if(ev.message.model) usedModel = ev.message.model; merkeSpeicher(chat, req.cc, req.fp, gesendet, ev.message.usage); }
       else if(ev.type==='content_block_start' && ev.content_block && ev.content_block.type==='thinking' && !text){ bubble.textContent = 'Denkt nach …'; }
       else if(ev.type==='content_block_delta' && ev.delta && ev.delta.type==='text_delta'){ text += ev.delta.text; scheduleRender(bubble, text); if(!usage.output_tokens) usage._teil = (usage._teil||0) + Math.ceil(ev.delta.text.length/3.2); }
       else if(ev.type==='message_delta'){ if(ev.delta) stop = ev.delta.stop_reason || stop; if(ev.usage) Object.assign(usage, ev.usage); }
@@ -801,6 +944,7 @@ async function runAssistant(){
     updateDownButton(); setSendState();
   }
   renderList();
+  if(text.trim() && !error) gedaechtnisPflegen(chat);
 }
 function stopStreaming(){ if(streaming) streaming.controller.abort(); }
 
@@ -815,8 +959,8 @@ function openChatSettings(isNew){
   $('#cs-danger').hidden = isNew;
   const canContinue = !isNew && ((c.prelude||[]).length + c.messages.length) > 0;
   $('#cs-continue-group').hidden = !canContinue; $('#cs-continue-caption').hidden = !canContinue;
-  $('#doc-edit').hidden = true;
-  renderDocInfo(); renderSize();
+  $('#doc-edit').hidden = true; $('#mem-edit').hidden = true;
+  renderDocInfo(); renderSize(); renderMem();
   open('view-chat-settings');
   if(isNew) setTimeout(()=>$('#cs-name').focus(), 380);
 }
@@ -827,11 +971,14 @@ function strategieZeile(c){
   const was = cc === null ? 'kein Speicher' : (cc.ttl === '1h' ? 'Speicher f\u00fcr eine Stunde' : 'Speicher f\u00fcr f\u00fcnf Minuten');
   const antworten = (c.messages || []).filter(m => m.role === 'assistant' && m.ts).map(m => m.ts).sort((a,b) => b-a);
   const min = antworten.length ? Math.round((Date.now() - antworten[0])/60000) : null;
+  const lebt = speicherLebt(c);
   let warum;
-  if(settings.cacheTtl !== 'auto') warum = 'von dir fest eingestellt';
+  if(settings.cacheTtl !== 'auto') warum = 'von dir fest eingestellt' + (lebt ? ', Speicher aktiv bis ' + timeLabel(lebt.bis) : '');
+  else if(lebt && lebt.ttl === '1h') warum = 'der Speicher ist aktiv bis ' + timeLabel(lebt.bis) + '. Jede Nachricht bis dahin liest ihn zum Bruchteil und verlängert ihn wieder um eine Stunde';
   else if(min === null) warum = 'erste Nachricht in diesem Chat, kein Aufschlag';
   else if(min < 4) warum = 'das Gespr\u00e4ch l\u00e4uft gerade, f\u00fcnf Minuten reichen und sind im Anlegen g\u00fcnstiger';
   else if(cc && cc.ttl === '1h') warum = 'letzte Antwort vor ' + min + ' Minuten, davor eine weitere: du bist mitten in einer Sitzung';
+  else if(lebt) warum = 'der F\u00fcnf-Minuten-Speicher ist noch aktiv bis ' + timeLabel(lebt.bis) + ', er wird gelesen statt verfallen gelassen';
   else if(min < 55) warum = 'letzte Antwort vor ' + min + ' Minuten, aber davor lange nichts: erst ab der n\u00e4chsten Nachricht wird gespeichert';
   else warum = 'letzte Antwort vor ' + (min >= 120 ? Math.round(min/60) + ' Stunden' : min + ' Minuten') + ': Anlegen w\u00e4re verschenkt';
   return '<div class="muted" style="font-size:13px;margin-top:8px;padding-top:6px;border-top:1px solid var(--ln)">Gew\u00e4hlt: <b style="color:var(--tx)">' + was + '</b><br>' + warum + '</div>';
@@ -839,20 +986,39 @@ function strategieZeile(c){
 function renderSize(){
   const c = current; if(!c) return;
   const tAnw = tokEst(c.instruction), tDoc = tokEst(c.doc && c.doc.text);
-  const tVor = (c.prelude || []).reduce((n,m) => n + tokEst(m.content) + 12, 0);
-  const tVerl = (c.messages || []).reduce((n,m) => n + tokEst(m.content) + 12, 0);
-  const ges = tAnw + tDoc + tVor + tVerl;
+  const g = settings.gedaechtnis && c.gedaechtnis ? c.gedaechtnis : null;
+  const ab = g ? g.n : 0, pre = c.prelude || [];
+  const tGed = g ? tokEst(g.text) : 0;
+  const tVor = pre.slice(Math.min(ab, pre.length)).reduce((n,m) => n + tokEst(m.content) + 12, 0);
+  const tVerl = (c.messages || []).slice(Math.max(0, ab - pre.length)).reduce((n,m) => n + tokEst(m.content) + 12, 0);
+  const ges = tAnw + tDoc + tGed + tVor + tVerl;
   const m = chatModel(c), p = PRICES[m.id] || PRICES['claude-opus-5'];
-  const schreibt = settings.cacheTtl !== 'off';
-  const kalt = ges * p.in * (schreibt ? 1.25 : 1) / 1e6, warm = ges * p.in * (p.read || 0.1) / 1e6;
+  const kalt = ges * p.in / 1e6, warm = ges * p.in * (p.read || 0.1) / 1e6;
   const zeile = (name, t) => t ? '<div style="display:flex;justify-content:space-between"><span>'+name+'</span><span style="font-variant-numeric:tabular-nums">'+fmtTok(t)+'</span></div>' : '';
   $('#cs-size').innerHTML =
-    zeile('Anweisung', tAnw) + zeile('Dokument', tDoc) +
-    zeile('Übernommener Verlauf', tVor) + zeile('Verlauf in diesem Chat', tVerl) +
+    zeile('Anweisung', tAnw) + zeile('Dokument', tDoc) + zeile('Gesprächsgedächtnis', tGed) +
+    zeile('Übernommener Verlauf', tVor) + zeile(g ? 'Verlauf wörtlich' : 'Verlauf in diesem Chat', tVerl) +
     '<div style="display:flex;justify-content:space-between;border-top:1px solid var(--ln);margin-top:6px;padding-top:6px;font-weight:600"><span>Je Nachricht</span><span style="font-variant-numeric:tabular-nums">'+fmtTok(ges)+' Tokens</span></div>' +
     strategieZeile(c) +
-    '<div class="muted" style="font-size:13px;margin-top:6px">Eingabe je Nachricht: etwa '+fmtUsd(kalt)+' kalt'+(schreibt ? ' mit Aufschlag' : '')+', '+fmtUsd(warm)+' aus dem Speicher. Antwort und Denken kommen dazu.'+
+    '<div class="muted" style="font-size:13px;margin-top:6px">Eingabe je Nachricht: etwa '+fmtUsd(kalt)+' kalt'+
+      (settings.cacheTtl !== 'off' ? ', '+fmtUsd(kalt*1.25)+' mit Speicher für 5 Minuten, '+fmtUsd(kalt*2)+' mit Speicher für eine Stunde' : '')+
+      ', '+fmtUsd(warm)+' aus dem Speicher. Antwort und Denken kommen dazu.'+
       (settings.zpt ? ' Umrechnung an deinen echten Zahlen kalibriert.' : ' Noch nicht kalibriert, schick eine Nachricht.')+'</div>';
+}
+// Gezeigt und korrigiert wird immer die neueste Fassung: die wartende, sonst die aktive.
+function memAktuell(c){ return c.gedaechtnisNeu || c.gedaechtnis || null; }
+function renderMem(){
+  const c = current; if(!c) return;
+  const g = memAktuell(c), zeigen = !!g && settings.gedaechtnis;
+  $('#cs-mem-group').hidden = !zeigen; $('#cs-mem-caption').hidden = !zeigen;
+  if(!zeigen) return;
+  let t = 'Fasst die Zeit vom '+datumLang(g.von)+' bis '+datumLang(g.bis)+' zusammen, etwa '+fmtTok(tokEst(g.text))+' Tokens.';
+  if(c.gedaechtnisNeu) t += c.gedaechtnis
+    ? ' Eine erweiterte Fassung liegt bereit und wird mit der nächsten Nachricht nach einer Pause übernommen.'
+    : ' Wird mit der nächsten Nachricht nach einer Pause übernommen, bis dahin geht der Verlauf noch wörtlich mit.';
+  if(g.kosten) t += ' Das Zusammenfassen hat bisher '+fmtUsd(g.kosten)+' gekostet.';
+  $('#cs-mem-info').textContent = t;
+  if(document.activeElement !== $('#cs-mem')) $('#cs-mem').value = g.text;
 }
 function renderDocInfo(){
   const d = current.doc;
@@ -882,8 +1048,9 @@ function closeChatSettings(){
 async function freshChat(){
   saveChatSettings();
   const old = current;
+  // Der Speicher gilt weiter: gleicher Vorbau, also liest der neue Chat Anweisung und Dokument daraus.
   const c = {id:uid(), name:(old.name||'Chat'), instruction:old.instruction||'', doc:old.doc ? {...old.doc} : null,
-    model:old.model||'', thinking:old.thinking||'', effort:old.effort||'',
+    model:old.model||'', thinking:old.thinking||'', effort:old.effort||'', speicher:old.speicher ? {...old.speicher} : undefined,
     messages:[], createdAt:Date.now(), updatedAt:Date.now()};
   chats.push(c); await DB.put(c);
   close('view-chat-settings'); current = c; renderChatView(); renderList();
@@ -895,6 +1062,9 @@ async function continueChat(){
   const c = {id:uid(), name:(old.name||'Chat')+' (Fortsetzung)', instruction:old.instruction||'', doc:old.doc ? {...old.doc} : null,
     model:old.model||'', thinking:old.thinking||'', effort:old.effort||'',
     prelude:(old.prelude||[]).concat(old.messages.map(m=>({role:m.role, content:m.content, ts:m.ts}))), preludeFrom:old.name||'Chat',
+    // Das Gedächtnis zählt Nachrichten ab Beginn des Verlaufs, und der Vorlauf ist genau dieser Verlauf: es passt unverändert.
+    gedaechtnis:old.gedaechtnis ? {...old.gedaechtnis} : undefined, gedaechtnisNeu:old.gedaechtnisNeu ? {...old.gedaechtnisNeu} : undefined,
+    speicher:old.speicher ? {...old.speicher} : undefined,
     messages:[], createdAt:Date.now(), updatedAt:Date.now()};
   chats.push(c); await DB.put(c);
   close('view-chat-settings'); current = c; renderChatView(); renderList();
@@ -925,6 +1095,7 @@ function initSettingsUI(){
   }, 400);
   $('#banner-close').onclick = () => { settings.bannerDismissed = true; saveSettings(); updateBanner(); };
   $('#s-cache').onclick = e => { const b = e.target.closest('button'); if(!b) return; settings.cacheTtl = b.dataset.v; saveSettings(); syncSettingsUI(); };
+  $('#s-mem').onclick = e => { const b = e.target.closest('button'); if(!b) return; settings.gedaechtnis = b.dataset.v === '1'; saveSettings(); syncSettingsUI(); };
   $('#s-showcost').onclick = e => { const b = e.target.closest('button'); if(!b) return; settings.showCost = b.dataset.v === '1'; saveSettings(); syncSettingsUI(); if(current) renderMessages(); };
   for(const [sel2,key] of [['#s-thinking','thinking'],['#s-effort','effort'],['#s-theme','theme']]){
     $(sel2).onclick = e => { const b = e.target.closest('button'); if(!b || b.disabled) return; settings[key] = b.dataset.v; saveSettings(); syncSettingsUI(); };
@@ -990,6 +1161,7 @@ function syncSettingsUI(){
   $('#s-cache').querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===settings.cacheTtl));
   renderCacheHinweis();
   $('#s-showcost').querySelectorAll('button').forEach(b=>b.classList.toggle('on', (b.dataset.v==='1')===!!settings.showCost));
+  $('#s-mem').querySelectorAll('button').forEach(b=>b.classList.toggle('on', (b.dataset.v==='1')===!!settings.gedaechtnis));
 }
 
 function animateGroups(sel){ $(sel).querySelectorAll('.group').forEach((g,i) => { g.classList.remove('rise'); void g.offsetWidth; g.style.animationDelay = (i*50)+'ms'; g.classList.add('rise'); }); }
@@ -1062,7 +1234,18 @@ function bindUI(){
   $('#file-doc').onchange = async e => { const f = e.target.files[0]; if(!f) return; const text = await f.text(); current.doc = {name:f.name, text, size:f.size}; $('#cs-doc').value = text; renderDocInfo(); renderSize(); saveChatSettings(); e.target.value = ''; toast('Dokument geladen'); };
   $('#btn-doc-toggle').onclick = () => { $('#doc-edit').hidden = !$('#doc-edit').hidden; };
   $('#btn-doc-remove').onclick = () => { current.doc = null; $('#cs-doc').value = ''; renderDocInfo(); renderSize(); saveChatSettings(); };
-  armConfirm($('#btn-clear'), 'Alle Nachrichten löschen? Nochmal tippen', async () => { if(streaming && streaming.chatId===current.id) stopStreaming(); current.messages = []; touch(current); await DB.put(current); toast('Verlauf gelöscht'); });
+  $('#btn-mem-toggle').onclick = () => { $('#mem-edit').hidden = !$('#mem-edit').hidden; };
+  $('#cs-mem').oninput = debounce(() => { const g = current && memAktuell(current); if(!g) return; g.text = $('#cs-mem').value; DB.put(current); renderSize(); }, 400);
+  armConfirm($('#btn-mem-reset'), 'Gedächtnis verwerfen? Nochmal tippen', async () => { delete current.gedaechtnis; delete current.gedaechtnisNeu; await DB.put(current); renderSize(); renderMem(); toast('Gedächtnis verworfen, der Verlauf geht wieder wörtlich mit'); });
+  armConfirm($('#btn-clear'), 'Alle Nachrichten löschen? Nochmal tippen', async () => {
+    if(streaming && streaming.chatId===current.id) stopStreaming();
+    current.messages = [];
+    // Ein Gedächtnis, das in die gelöschten Nachrichten hineinreicht, passt nicht mehr.
+    const pre = (current.prelude || []).length;
+    if(current.gedaechtnis && current.gedaechtnis.n > pre) delete current.gedaechtnis;
+    if(current.gedaechtnisNeu && current.gedaechtnisNeu.n > pre) delete current.gedaechtnisNeu;
+    touch(current); await DB.put(current); renderSize(); renderMem(); toast('Verlauf gelöscht');
+  });
   armConfirm($('#btn-delete'), 'Chat endgültig löschen? Nochmal tippen', async () => { if(streaming && streaming.chatId===current.id) stopStreaming(); await DB.del(current.id); chats = chats.filter(c=>c.id!==current.id); current = null; close('view-chat-settings'); close('view-chat'); renderList(); });
 
   // Beim Zurückkehren in die App: Datumschips („Heute“, „Gestern“) und Listenzeiten neu berechnen.
@@ -1075,6 +1258,12 @@ function bindUI(){
 
 (async function main(){
   try{ await DB.open(); chats = await DB.all(); }catch(e){ toast('Speicher konnte nicht geöffnet werden.'); }
+  // Einmalig auf Opus 5.5 umstellen: die gespeicherten Einstellungen hielten Opus 5 fest, obwohl 5.5 die Vorgabe ist.
+  if(!settings.mig55){
+    if(settings.model === 'claude-opus-5') settings.model = 'claude-opus-5-5';
+    for(const c of chats) if(c.model === 'claude-opus-5'){ c.model = 'claude-opus-5-5'; DB.put(c); }
+    settings.mig55 = true; saveSettings();
+  }
   applyTheme(); initSettingsUI(); bindUI(); renderList(); fitApp();
   if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
 })();
