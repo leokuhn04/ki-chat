@@ -255,8 +255,11 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><span class="lbl">Größe dieses Chats</span><div id="cs-size" style="font-size:15px;line-height:1.5"></div></div>
       </div>
       <p class="group-caption" id="cs-size-caption">Geschätzt aus der Zeichenzahl. Bei jeder Nachricht geht alles davon mit. Der Verlauf wächst mit jedem Austausch, das Dokument bleibt gleich groß.</p>
-      <div class="group" id="cs-continue-group"><button class="btn" id="btn-continue">In neuem Chat fortsetzen …</button></div>
-      <p class="group-caption" id="cs-continue-caption">Legt einen neuen Chat an, der diesen Verlauf komplett mitnimmt. Für das Modell ist es, als würdest du hier weiterschreiben.</p>
+      <div class="group" id="cs-continue-group">
+        <button class="btn" id="btn-fresh">Neu beginnen mit diesem Dokument …</button>
+        <button class="btn" id="btn-continue">In neuem Chat fortsetzen …</button>
+      </div>
+      <p class="group-caption" id="cs-continue-caption"><b>Neu beginnen</b> nimmt Dokument, Anweisung und Modellwahl mit, aber nicht den Verlauf. Das Modell kennt weiterhin alles aus dem Dokument, das bisherige Gespräch aber nicht mehr. Jede Nachricht wird um den Verlaufsanteil günstiger, und der Preis wächst nicht weiter.<br><b>Fortsetzen</b> nimmt zusätzlich den kompletten Verlauf mit. Das kostet ab sofort in jedem neuen Chat weiter mit und wächst mit jeder Nachricht.</p>
       <div class="group" id="cs-danger">
         <button class="btn danger" id="btn-clear">Verlauf löschen</button>
         <button class="btn danger" id="btn-delete">Chat löschen</button>
@@ -299,7 +302,7 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><span class="lbl">Erscheinungsbild</span><div class="seg" id="s-theme"><button data-v="system">Automatisch</button><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></div></div>
       </div>
       <p class="group-caption">Alle Chats, Dokumente und der API-Key liegen ausschließlich auf diesem Gerät. Es gibt keinen Server dazwischen.</p>
-      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-23.1</p>
+      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-23.2</p>
     </div>
   </section>
 
@@ -873,6 +876,17 @@ function closeChatSettings(){
   renderList();
 }
 // „In neuem Chat fortsetzen“: neuer Chat mit denselben Vorgaben, der bisherige Verlauf wird als unsichtbarer Vorlauf mitgenommen.
+// Neu beginnen: alles ausser dem Verlauf uebernehmen. Spart bei jeder Nachricht den Verlaufsanteil.
+async function freshChat(){
+  saveChatSettings();
+  const old = current;
+  const c = {id:uid(), name:(old.name||'Chat'), instruction:old.instruction||'', doc:old.doc ? {...old.doc} : null,
+    model:old.model||'', thinking:old.thinking||'', effort:old.effort||'',
+    messages:[], createdAt:Date.now(), updatedAt:Date.now()};
+  chats.push(c); await DB.put(c);
+  close('view-chat-settings'); current = c; renderChatView(); renderList();
+  toast('Neuer Chat mit demselben Dokument, Verlauf bei null');
+}
 async function continueChat(){
   saveChatSettings();
   const old = current;
@@ -897,6 +911,7 @@ function initSettingsUI(){
   $('#cs-effort').innerHTML = '<option value="">Wie in den Einstellungen</option>'+EFFORTS.map(e=>'<option value="'+e+'">'+EFFORT_LABELS[e]+'</option>').join('');
   for(const id of ['#cs-model','#cs-thinking','#cs-effort']) $(id).onchange = saveChatSettings;
   $('#btn-continue').onclick = continueChat;
+  $('#btn-fresh').onclick = freshChat;
   sel.onchange = () => { settings.model = sel.value; saveSettings(); syncSettingsUI(); };
   $('#s-key').oninput = debounce(()=>{ settings.apiKey = $('#s-key').value.trim(); saveSettings(); }, 250);
   $('#btn-key-toggle').onclick = () => { const i = $('#s-key'); i.type = i.type==='password' ? 'text' : 'password'; $('#btn-key-toggle').textContent = i.type==='password' ? 'Anzeigen' : 'Verbergen'; };
