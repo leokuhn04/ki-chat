@@ -299,7 +299,7 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><span class="lbl">Erscheinungsbild</span><div class="seg" id="s-theme"><button data-v="system">Automatisch</button><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></div></div>
       </div>
       <p class="group-caption">Alle Chats, Dokumente und der API-Key liegen ausschließlich auf diesem Gerät. Es gibt keinen Server dazwischen.</p>
-      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.8</p>
+      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-23.1</p>
     </div>
   </section>
 
@@ -472,13 +472,15 @@ function abstandMedian(chat){
 function cacheStrategie(chat){
   if(settings.cacheTtl === 'off') return null;
   if(settings.cacheTtl === '5m') return {type:'ephemeral'};
-  // Automatik
-  const letzteAntwort = (chat.messages || []).filter(m => m.role === 'assistant').reduce((t,m) => Math.max(t, m.ts || 0), 0);
-  const seit = letzteAntwort ? Date.now() - letzteAntwort : Infinity;
-  if(seit < 4*60*1000) return {type:'ephemeral'};            // Gespraech laeuft, 5 Minuten reichen
-  const med = abstandMedian(chat);
-  if(med !== null && med < 50*60*1000) return {type:'ephemeral', ttl:'1h'};  // Sitzungsschreiber
-  return null;                                                // weite Abstaende: Aufschlag waere verschenkt
+  // Automatik. Grundsatz: nie auf eine Sitzung wetten, die noch nicht begonnen hat.
+  // Anlegen kostet das 1,25- bis 2-fache einer Nachricht; verfaellt es, ist das Geld weg.
+  const antworten = (chat.messages || []).filter(m => m.role === 'assistant' && m.ts).map(m => m.ts).sort((a,b) => b-a);
+  const jetzt = Date.now();
+  const seitLetzter = antworten.length ? jetzt - antworten[0] : Infinity;
+  const seitVorletzter = antworten.length > 1 ? jetzt - antworten[1] : Infinity;
+  if(seitLetzter < 4*60*1000) return {type:'ephemeral'};                       // Gespraech laeuft, 5 Minuten reichen
+  if(seitLetzter < 55*60*1000 && seitVorletzter < 90*60*1000) return {type:'ephemeral', ttl:'1h'};  // nachweislich mitten in einer Sitzung
+  return null;                                                                  // erste Nachricht nach einer Pause: kein Aufschlag
 }
 function chatModel(chat){ return MODELS.find(x=>x.id===(chat.model || settings.model)) || MODELS[0]; }
 function chatThinking(chat){ return chat.thinking || settings.thinking; }
@@ -816,18 +818,17 @@ function openChatSettings(isNew){
 // Grobe Schaetzung: im Deutschen etwa drei Zeichen je Token. Genau genug, um zu sehen, wo das Geld liegt.
 const tokEst = t => Math.round((t || '').length / (settings.zpt || 2.6));
 function strategieZeile(c){
-  const med = abstandMedian(c), cc = cacheStrategie(c);
-  const min = med === null ? null : Math.round(med/60000);
+  const cc = cacheStrategie(c);
   const was = cc === null ? 'kein Speicher' : (cc.ttl === '1h' ? 'Speicher f\u00fcr eine Stunde' : 'Speicher f\u00fcr f\u00fcnf Minuten');
-  // Denselben Weg nachvollziehen, den cacheStrategie genommen hat, sonst widerspricht die Begr\u00fcndung der Wahl.
-  const letzteAntwort = (c.messages || []).filter(m => m.role === 'assistant').reduce((t,m) => Math.max(t, m.ts || 0), 0);
-  const seitMin = letzteAntwort ? Math.round((Date.now() - letzteAntwort)/60000) : null;
+  const antworten = (c.messages || []).filter(m => m.role === 'assistant' && m.ts).map(m => m.ts).sort((a,b) => b-a);
+  const min = antworten.length ? Math.round((Date.now() - antworten[0])/60000) : null;
   let warum;
   if(settings.cacheTtl !== 'auto') warum = 'von dir fest eingestellt';
-  else if(seitMin !== null && seitMin < 4) warum = 'das Gespr\u00e4ch l\u00e4uft gerade, die letzte Antwort war vor ' + (seitMin < 1 ? 'weniger als einer Minute' : seitMin === 1 ? 'einer Minute' : seitMin + ' Minuten') + '. F\u00fcnf Minuten reichen und sind im Anlegen g\u00fcnstiger.';
-  else if(min === null) warum = 'noch zu wenige Nachrichten, um deine Abst\u00e4nde zu kennen';
-  else if(min < 50) warum = 'deine Nachrichten kommen typisch ' + min + ' Minuten auseinander, da lohnt die Stunde';
-  else warum = 'deine Nachrichten kommen typisch ' + min + ' Minuten auseinander, da w\u00e4re jeder Aufschlag verschenkt';
+  else if(min === null) warum = 'erste Nachricht in diesem Chat, kein Aufschlag';
+  else if(min < 4) warum = 'das Gespr\u00e4ch l\u00e4uft gerade, f\u00fcnf Minuten reichen und sind im Anlegen g\u00fcnstiger';
+  else if(cc && cc.ttl === '1h') warum = 'letzte Antwort vor ' + min + ' Minuten, davor eine weitere: du bist mitten in einer Sitzung';
+  else if(min < 55) warum = 'letzte Antwort vor ' + min + ' Minuten, aber davor lange nichts: erst ab der n\u00e4chsten Nachricht wird gespeichert';
+  else warum = 'letzte Antwort vor ' + (min >= 120 ? Math.round(min/60) + ' Stunden' : min + ' Minuten') + ': Anlegen w\u00e4re verschenkt';
   return '<div class="muted" style="font-size:13px;margin-top:8px;padding-top:6px;border-top:1px solid var(--ln)">Gew\u00e4hlt: <b style="color:var(--tx)">' + was + '</b><br>' + warum + '</div>';
 }
 function renderSize(){
