@@ -299,7 +299,7 @@ header.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(var(--
         <div class="field"><span class="lbl">Erscheinungsbild</span><div class="seg" id="s-theme"><button data-v="system">Automatisch</button><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></div></div>
       </div>
       <p class="group-caption">Alle Chats, Dokumente und der API-Key liegen ausschließlich auf diesem Gerät. Es gibt keinen Server dazwischen.</p>
-      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.7</p>
+      <p class="group-caption" style="text-align:center;opacity:.6">Version 2026-09-22.8</p>
     </div>
   </section>
 
@@ -818,13 +818,17 @@ const tokEst = t => Math.round((t || '').length / (settings.zpt || 2.6));
 function strategieZeile(c){
   const med = abstandMedian(c), cc = cacheStrategie(c);
   const min = med === null ? null : Math.round(med/60000);
-  let was = cc === null ? 'kein Speicher' : (cc.ttl === '1h' ? 'Speicher fuer eine Stunde' : 'Speicher fuer fuenf Minuten');
+  const was = cc === null ? 'kein Speicher' : (cc.ttl === '1h' ? 'Speicher f\u00fcr eine Stunde' : 'Speicher f\u00fcr f\u00fcnf Minuten');
+  // Denselben Weg nachvollziehen, den cacheStrategie genommen hat, sonst widerspricht die Begr\u00fcndung der Wahl.
+  const letzteAntwort = (c.messages || []).filter(m => m.role === 'assistant').reduce((t,m) => Math.max(t, m.ts || 0), 0);
+  const seitMin = letzteAntwort ? Math.round((Date.now() - letzteAntwort)/60000) : null;
   let warum;
   if(settings.cacheTtl !== 'auto') warum = 'von dir fest eingestellt';
-  else if(min === null) warum = 'noch zu wenige Nachrichten, um die Abstaende zu kennen';
-  else if(min < 50) warum = 'deine Nachrichten kommen typisch '+min+' Minuten auseinander, da lohnt die Stunde';
-  else warum = 'deine Nachrichten kommen typisch '+min+' Minuten auseinander, da waere der Aufschlag verschenkt';
-  return '<div class="muted" style="font-size:13px;margin-top:8px;padding-top:6px;border-top:1px solid var(--ln)">Gewaehlt: <b style="color:var(--tx)">'+was+'</b><br>'+warum+'</div>';
+  else if(seitMin !== null && seitMin < 4) warum = 'das Gespr\u00e4ch l\u00e4uft gerade, die letzte Antwort war vor ' + (seitMin < 1 ? 'weniger als einer Minute' : seitMin === 1 ? 'einer Minute' : seitMin + ' Minuten') + '. F\u00fcnf Minuten reichen und sind im Anlegen g\u00fcnstiger.';
+  else if(min === null) warum = 'noch zu wenige Nachrichten, um deine Abst\u00e4nde zu kennen';
+  else if(min < 50) warum = 'deine Nachrichten kommen typisch ' + min + ' Minuten auseinander, da lohnt die Stunde';
+  else warum = 'deine Nachrichten kommen typisch ' + min + ' Minuten auseinander, da w\u00e4re jeder Aufschlag verschenkt';
+  return '<div class="muted" style="font-size:13px;margin-top:8px;padding-top:6px;border-top:1px solid var(--ln)">Gew\u00e4hlt: <b style="color:var(--tx)">' + was + '</b><br>' + warum + '</div>';
 }
 function renderSize(){
   const c = current; if(!c) return;
